@@ -383,6 +383,12 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return api.NewFitError(task, node, api.NodePodNumberExceeded)
 		}
 
+		if !task.Resreq.LessEqual(node.Idle, api.Zero) {
+			klog.V(4).Infof("NodeResources predicates Task <%s/%s> on Node <%s> failed",
+				task.Namespace, task.Name, node.Name)
+			return api.NewFitError(task, node, api.NodeResourceFitFailed)
+		}
+
 		predicateByStablefilter := func(pod *v1.Pod, nodeInfo *k8sframework.NodeInfo) (bool, error) {
 			// CheckNodeUnschedulable
 			status := nodeUnscheduleFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
