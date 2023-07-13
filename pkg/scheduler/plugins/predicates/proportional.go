@@ -35,6 +35,10 @@ func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, pro
 		}
 	}
 
+	if task.Preemptable {
+		return status, nil
+	}
+
 	for resourceName, resourceRate := range proportional {
 		if value, found := node.Idle.ScalarResources[resourceName]; found {
 			cpuReserved := value * resourceRate.CPU
