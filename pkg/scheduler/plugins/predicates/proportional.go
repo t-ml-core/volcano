@@ -40,9 +40,8 @@ func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, pro
 		if value, found := node.Idle.ScalarResources[resourceName]; found {
 			cpuReserved := value * resourceRate.CPU
 			memoryReserved := value * resourceRate.Memory * 1000 * 1000
-			r := node.Idle.Clone()
-			r = r.Sub(task.Resreq)
-			if r.MilliCPU < cpuReserved || r.Memory < memoryReserved {
+
+			if node.Idle.MilliCPU-task.Resreq.MilliCPU < cpuReserved || node.Idle.Memory-task.Resreq.Memory < memoryReserved {
 				return false, fmt.Errorf("proportional of resource %s check failed", resourceName)
 			}
 		}
