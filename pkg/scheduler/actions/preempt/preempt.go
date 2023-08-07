@@ -124,12 +124,12 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					if !task.Preemptable {
 						return false
 					}
-					job, found := ssn.Jobs[task.Job]
+					_, found := ssn.Jobs[task.Job]
 					if !found {
 						return false
 					}
-					// Preempt other jobs within queue
-					return job.Queue == preemptorJob.Queue && preemptor.Job != task.Job
+
+					return preemptor.Job != task.Job
 				}, ph); preempted {
 					assigned = true
 				}
