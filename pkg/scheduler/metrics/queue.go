@@ -125,6 +125,14 @@ var (
 			Help:      "The number of Unknown PodGroup in this queue",
 		}, []string{"queue_name"},
 	)
+
+	queuePodGroupCompleted = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_pod_group_completed_count",
+			Help:      "The number of Completed PodGroup in this queue",
+		}, []string{"queue_name"},
+	)
 )
 
 // UpdateQueueAllocated records allocated resources for one queue
@@ -186,6 +194,11 @@ func UpdateQueuePodGroupUnknownCount(queueName string, count int32) {
 	queuePodGroupUnknown.WithLabelValues(queueName).Set(float64(count))
 }
 
+// UpdateQueueSubmittedJobsCount records submitted jobs for one queue
+func UpdateQueuePodGroupCompletedCount(queueName string, count int32) {
+	queuePodGroupCompleted.WithLabelValues(queueName).Set(float64(count))
+}
+
 // DeleteQueueMetrics delete all metrics related to the queue
 func DeleteQueueMetrics(queueName string) {
 	queueAllocatedMilliCPU.DeleteLabelValues(queueName)
@@ -201,4 +214,5 @@ func DeleteQueueMetrics(queueName string) {
 	queuePodGroupPending.DeleteLabelValues(queueName)
 	queuePodGroupRunning.DeleteLabelValues(queueName)
 	queuePodGroupUnknown.DeleteLabelValues(queueName)
+	queuePodGroupCompleted.DeleteLabelValues(queueName)
 }
