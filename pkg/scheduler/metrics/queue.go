@@ -126,19 +126,11 @@ var (
 		}, []string{"queue_name"},
 	)
 
-	queueSubmittedJobs = promauto.NewCounterVec(
-		prometheus.CounterOpts{
+	queuePodGroupCompleted = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
 			Subsystem: VolcanoNamespace,
-			Name:      "queue_submitted_jobs_count",
-			Help:      "Total number of submitted jobs",
-		}, []string{"queue_name"},
-	)
-
-	queueCompletedJobs = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Subsystem: VolcanoNamespace,
-			Name:      "queue_completed_jobs_count",
-			Help:      "Total number of completed jobs",
+			Name:      "queue_pod_group_completed_count",
+			Help:      "The number of Completed PodGroup in this queue",
 		}, []string{"queue_name"},
 	)
 )
@@ -203,13 +195,8 @@ func UpdateQueuePodGroupUnknownCount(queueName string, count int32) {
 }
 
 // UpdateQueueSubmittedJobsCount records submitted jobs for one queue
-func UpdateQueueSubmittedJobsCount(queueName string, count int32) {
-	queueSubmittedJobs.WithLabelValues(queueName).Add(float64(count))
-}
-
-// UpdateQueueCompletedJobs records completed jobs for one queue
-func UpdateQueueCompletedJobs(queueName string, count int32) {
-	queueCompletedJobs.WithLabelValues(queueName).Add(float64(count))
+func UpdateQueuePodGroupCompletedCount(queueName string, count int32) {
+	queuePodGroupCompleted.WithLabelValues(queueName).Set(float64(count))
 }
 
 // DeleteQueueMetrics delete all metrics related to the queue
@@ -227,6 +214,5 @@ func DeleteQueueMetrics(queueName string) {
 	queuePodGroupPending.DeleteLabelValues(queueName)
 	queuePodGroupRunning.DeleteLabelValues(queueName)
 	queuePodGroupUnknown.DeleteLabelValues(queueName)
-	queueSubmittedJobs.DeleteLabelValues(queueName)
-	queueCompletedJobs.DeleteLabelValues(queueName)
+	queuePodGroupCompleted.DeleteLabelValues(queueName)
 }
