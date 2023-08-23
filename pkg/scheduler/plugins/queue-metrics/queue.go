@@ -23,6 +23,9 @@ func (pp *queueMetricsPlugin) Name() string {
 func (pp *queueMetricsPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Record metrics
 	for _, queue := range ssn.Queues {
+		metrics.UpdateQueueSubmittedJobsCount(queue.Name, queue.Queue.Status.Inqueue)
+		metrics.UpdateQueueCompletedJobs(queue.Name, queue.Queue.Status.Completed)
+
 		metrics.UpdateQueuePodGroupInqueueCount(queue.Name, queue.Queue.Status.Inqueue)
 		metrics.UpdateQueuePodGroupPendingCount(queue.Name, queue.Queue.Status.Pending)
 		metrics.UpdateQueuePodGroupRunningCount(queue.Name, queue.Queue.Status.Running)
