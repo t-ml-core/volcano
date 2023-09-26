@@ -136,6 +136,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				}
 			} else if status == api.Pending {
 				for _, t := range tasks {
+					klog.V(5).Infof("Task: %s, resreq.cpu %v, resreq.mem %v", t.Name, t.Resreq.MilliCPU, t.Resreq.Memory)
 					attr.request.Add(t.Resreq)
 				}
 			}
