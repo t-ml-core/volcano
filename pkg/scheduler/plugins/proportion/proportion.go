@@ -310,6 +310,19 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		job, found := ssn.Jobs[candidate.Job]
+		preemptable := false
+		if !found {
+			klog.V(3).Infof("Can't find job by id for task: <%v>", candidate)
+		} else {
+			preemptable = job.Preemptable
+		}
+
+		// Allow allocation over guarantee resources for preemptable jobs
+		if preemptable {
+			return true
+		}
+
 		attr := pp.queueOpts[queue.UID]
 
 		free, _ := attr.deserved.Diff(attr.allocated, api.Zero)
@@ -331,6 +344,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if attr.realCapability == nil {
 			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
 				queue.Name, job.Namespace, job.Name)
+			return util.Permit
+		}
+
+		// Allow preemptable jobs to be inqueue over real capacity
+		if job.Preemptable {
+			klog.V(4).Infof("job <%s> is preemptable, allow to Inqueue.", queue.Name)
 			return util.Permit
 		}
 
