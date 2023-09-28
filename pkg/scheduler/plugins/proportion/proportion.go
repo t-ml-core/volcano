@@ -129,21 +129,16 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		attr := pp.queueOpts[job.Queue]
-		klog.V(5).Infof("walking tasks in job %v, tasks: %v", job.Name, job.TaskStatusIndex)
 		for status, tasks := range job.TaskStatusIndex {
-			klog.V(5).Infof("entery in the cycle. status: %v, tasks: %v", status, tasks)
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
 					attr.allocated.Add(t.Resreq)
 					attr.request.Add(t.Resreq)
 				}
 			} else if status == api.Pending {
-				klog.V(5).Infof("pending case")
 				for _, t := range tasks {
-					klog.V(5).Infof("Task: %s, resreq.cpu %v, resreq.mem %v", t.Name, t.Resreq.MilliCPU, t.Resreq.Memory)
 					attr.request.Add(t.Resreq)
 				}
-				klog.V(5).Infof("end pending case")
 			}
 		}
 
