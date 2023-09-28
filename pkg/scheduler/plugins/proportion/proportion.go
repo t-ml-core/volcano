@@ -35,9 +35,10 @@ import (
 const PluginName = "proportion"
 
 type proportionPlugin struct {
-	totalResource  *api.Resource
-	totalGuarantee *api.Resource
-	queueOpts      map[api.QueueID]*queueAttr
+	totalResource              *api.Resource
+	totalGuarantee             *api.Resource
+	totalNotAllocatedResources *api.Resource
+	queueOpts                  map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
 }
@@ -253,6 +254,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
+	// We allow execution of preemptable tasks over guaranteed resources
+	// so we need to understand how many resources are available in a cluster
+	pp.totalNotAllocatedResources = pp.totalResource.Clone()
+	for _, attr := range pp.queueOpts {
+		pp.totalNotAllocatedResources.Sub(attr.allocated)
+	}
+
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
@@ -318,8 +326,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			preemptable = job.Preemptable
 		}
 
-		// Allow allocation over guarantee resources for preemptable jobs
-		if preemptable {
+		// Allow allocation over guaranteed resources for preemptable jobs
+		if preemptable && candidate.Resreq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
 			return true
 		}
 
@@ -347,20 +355,21 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Permit
 		}
 
-		// Allow preemptable jobs to be inqueue over real capacity
-		if job.Preemptable {
-			klog.V(4).Infof("job <%s> is preemptable, allow to Inqueue.", queue.Name)
-			return util.Permit
-		}
-
 		if job.PodGroup.Spec.MinResources == nil {
 			klog.V(4).Infof("job %s MinResources is null.", job.Name)
 			return util.Permit
 		}
 		minReq := job.GetMinResources()
 
-		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s>",
-			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String())
+		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s> notAllocated: <%s>",
+			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String(), pp.totalNotAllocatedResources.String())
+
+		// Allow preemptable jobs to be inqueue over guaranteed resources
+		if job.Preemptable && minReq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
+			klog.V(4).Infof("job <%s> is preemptable, allow to Inqueue.", queue.Name)
+			return util.Permit
+		}
+
 		// The queue resource quota limit has not reached
 		r := minReq.Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 		rr := attr.realCapability.Clone()
@@ -387,7 +396,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
+			pp.totalNotAllocatedResources.Sub(event.Task.Resreq)
+
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			gpu := pp.totalNotAllocatedResources.ScalarResources[api.VolcanoGPUNumber]
+			metrics.UpdateTotalNotAllocated(pp.totalNotAllocatedResources.MilliCPU, gpu, pp.totalNotAllocatedResources.Memory)
 
 			pp.updateShare(attr)
 
@@ -398,7 +411,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
+			pp.totalNotAllocatedResources.Add(event.Task.Resreq)
+
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			gpu := pp.totalNotAllocatedResources.ScalarResources[api.VolcanoGPUNumber]
+			metrics.UpdateTotalNotAllocated(pp.totalNotAllocatedResources.MilliCPU, gpu, pp.totalNotAllocatedResources.Memory)
 
 			pp.updateShare(attr)
 
@@ -411,6 +428,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 func (pp *proportionPlugin) OnSessionClose(ssn *framework.Session) {
 	pp.totalResource = nil
 	pp.totalGuarantee = nil
+	pp.totalNotAllocatedResources = nil
 	pp.queueOpts = nil
 }
 
