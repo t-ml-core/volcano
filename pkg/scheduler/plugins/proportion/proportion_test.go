@@ -20,9 +20,10 @@ import (
 	"testing"
 	"time"
 
+	"io/ioutil"
+
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"io/ioutil"
 
 	apiv1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -121,9 +122,13 @@ func TestProportion(t *testing.T) {
 	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodRunning, util.BuildResourceList("3", "3k"), "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
 	w2 := util.BuildPod("ns1", "worker-2", "", apiv1.PodRunning, util.BuildResourceList("5", "5k"), "pg1", map[string]string{"role": "worker"}, map[string]string{})
 	w3 := util.BuildPod("ns1", "worker-3", "", apiv1.PodRunning, util.BuildResourceList("4", "4k"), "pg2", map[string]string{"role": "worker"}, map[string]string{})
+	pw1 := util.BuildPreemptablePod("ns1", "preemptable-1", "", apiv1.PodPending, util.BuildResourceList("1", "1k"), "pg3", map[string]string{"role": "worker"}, map[string]string{})
+	pw2 := util.BuildPreemptablePod("ns1", "preemptable-2", "", apiv1.PodPending, util.BuildResourceList("3", "3k"), "pg4", map[string]string{"role": "worker"}, map[string]string{})
 	w1.Spec.Affinity = getWorkerAffinity()
 	w2.Spec.Affinity = getWorkerAffinity()
 	w3.Spec.Affinity = getWorkerAffinity()
+	pw1.Spec.Affinity = getWorkerAffinity()
+	pw2.Spec.Affinity = getWorkerAffinity()
 
 	// nodes
 	n1 := util.BuildNode("node1", util.BuildResourceList("4", "4k"), map[string]string{"selector": "worker"})
@@ -147,6 +152,9 @@ func TestProportion(t *testing.T) {
 			MinMember:         int32(2),
 			PriorityClassName: p2.Name,
 		},
+		Status: schedulingv1beta1.PodGroupStatus{
+			Phase: schedulingv1beta1.PodGroupInqueue,
+		},
 	}
 	pg2 := &schedulingv1beta1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
@@ -158,11 +166,52 @@ func TestProportion(t *testing.T) {
 			MinMember:         int32(1),
 			PriorityClassName: p1.Name,
 		},
+		Status: schedulingv1beta1.PodGroupStatus{
+			Phase: schedulingv1beta1.PodGroupInqueue,
+		},
+	}
+	pg3 := &schedulingv1beta1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "ns1",
+			Name:      "pg3",
+		},
+		Spec: schedulingv1beta1.PodGroupSpec{
+			Queue:             "q1",
+			MinMember:         int32(1),
+			PriorityClassName: p1.Name,
+		},
+		Status: schedulingv1beta1.PodGroupStatus{
+			Phase: schedulingv1beta1.PodGroupPending,
+		},
+	}
+	pg4 := &schedulingv1beta1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "ns1",
+			Name:      "pg4",
+		},
+		Spec: schedulingv1beta1.PodGroupSpec{
+			Queue:             "q1",
+			MinMember:         int32(1),
+			PriorityClassName: p2.Name,
+		},
+		Status: schedulingv1beta1.PodGroupStatus{
+			Phase: schedulingv1beta1.PodGroupPending,
+		},
 	}
 	// queue
 	queue1 := &schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "q1",
+		},
+	}
+	queue2 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "q2",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: util.BuildResourceList("3", "3k"),
+			},
 		},
 	}
 
@@ -173,6 +222,7 @@ func TestProportion(t *testing.T) {
 		nodes    []*apiv1.Node
 		pcs      []*schedulingv1.PriorityClass
 		pgs      []*schedulingv1beta1.PodGroup
+		qs       []*schedulingv1beta1.Queue
 		expected map[string]string
 	}{
 		{
@@ -181,8 +231,21 @@ func TestProportion(t *testing.T) {
 			nodes: []*apiv1.Node{n1, n2},
 			pcs:   []*schedulingv1.PriorityClass{p1, p2},
 			pgs:   []*schedulingv1beta1.PodGroup{pg1, pg2},
+			qs:    []*schedulingv1beta1.Queue{queue1},
 			expected: map[string]string{ // podKey -> node
 				"ns1/worker-3": "node1",
+			},
+		},
+		{
+			name:  "preemptable-pod",
+			pods:  []*apiv1.Pod{w3, pw1, pw2},
+			nodes: []*apiv1.Node{n1, n2},
+			pcs:   []*schedulingv1.PriorityClass{p1, p2},
+			pgs:   []*schedulingv1beta1.PodGroup{pg3, pg4},
+			qs:    []*schedulingv1beta1.Queue{queue1, queue2},
+			expected: map[string]string{ // podKey -> node
+				"ns1/worker-3":      "node1",
+				"ns1/preemptable-2": "node2",
 			},
 		},
 	}
@@ -233,7 +296,9 @@ func TestProportion(t *testing.T) {
 			}
 			schedulerCache.AddPodGroupV1beta1(pg)
 		}
-		schedulerCache.AddQueueV1beta1(queue1)
+		for _, queue := range test.qs {
+			schedulerCache.AddQueueV1beta1(queue)
+		}
 		// session
 		trueValue := true
 
@@ -267,6 +332,18 @@ func TestProportion(t *testing.T) {
 					allocator.Execute(ssn)
 					framework.CloseSession(ssn)
 					time.Sleep(time.Second * 3)
+					for taskId, nodeName := range test.expected {
+						// Validate that all tasks have been scheduled
+						node, ok := ssn.Nodes[nodeName]
+						if !ok {
+							t.Errorf("can't find node with name: %s in ssn.Nodes: %v", nodeName, ssn.Nodes)
+						}
+						_, ok = node.Tasks[api.TaskID(taskId)]
+						if !ok {
+							t.Errorf("can't find task with id: %s on node %s with tasks: %v", taskId, node.Name, node.Tasks)
+						}
+					}
+
 					if num == 1 {
 						metrics := getLocalMetrics()
 						if metrics == 12000 {
