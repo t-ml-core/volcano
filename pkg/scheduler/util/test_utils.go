@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
@@ -77,6 +78,13 @@ func BuildPod(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceLi
 			},
 		},
 	}
+}
+
+// BuildPod builds a preemptable pod object
+func BuildPreemptablePod(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
+	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
+	pod.ObjectMeta.Annotations[v1beta1.PodPreemptable] = "true"
+	return pod
 }
 
 // BuildPodWithPVC builts Pod object with pvc volume
