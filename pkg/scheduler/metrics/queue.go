@@ -133,6 +133,30 @@ var (
 			Help:      "The number of Completed PodGroup in this queue",
 		}, []string{"queue_name"},
 	)
+
+	totalNotAllocatedMilliCpu = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "total_not_allocated_milli_cpu",
+			Help:      "The number of free milli cpus in a cluster",
+		}, []string{},
+	)
+
+	totalNotAllocatedMilliGpu = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "total_not_allocated_milli_gpu",
+			Help:      "The number of free milli gpus in a cluster",
+		}, []string{},
+	)
+
+	totalNotAllocatedMemory = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "total_not_allocated_memory",
+			Help:      "The number of free memory in a cluster",
+		}, []string{},
+	)
 )
 
 // UpdateQueueAllocated records allocated resources for one queue
@@ -194,9 +218,16 @@ func UpdateQueuePodGroupUnknownCount(queueName string, count int32) {
 	queuePodGroupUnknown.WithLabelValues(queueName).Set(float64(count))
 }
 
-// UpdateQueueSubmittedJobsCount records submitted jobs for one queue
+// UpdateQueuePodGroupCompletedCount records the number of completed pods
 func UpdateQueuePodGroupCompletedCount(queueName string, count int32) {
 	queuePodGroupCompleted.WithLabelValues(queueName).Set(float64(count))
+}
+
+// UpdateTotalNotAllocated updates totalNotAllocated gauges
+func UpdateTotalNotAllocated(milliCPU, milliGPU, memory float64) {
+	totalNotAllocatedMilliCpu.WithLabelValues().Set(milliCPU)
+	totalNotAllocatedMilliGpu.WithLabelValues().Set(milliGPU)
+	totalNotAllocatedMemory.WithLabelValues().Set(memory)
 }
 
 // DeleteQueueMetrics delete all metrics related to the queue
