@@ -180,6 +180,19 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	remaining := pp.totalResource.Clone()
+
+	// Process guarantee resources of the queues
+	// We must substract the guarantees from the remaining before
+	// fairness divison of the remianing
+	for _, attr := range pp.queueOpts {
+		// Queue can't desrve less resources than it has in guarantee
+		if attr.deserved.Less(attr.guarantee, api.Zero) {
+			guarantee := attr.guarantee.Clone()
+			attr.deserved = guarantee
+			remaining.Sub(guarantee)
+		}
+	}
+
 	meet := map[api.QueueID]struct{}{}
 	for {
 		totalWeight := int32(0)
@@ -217,6 +230,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			attr.deserved.MinDimensionResource(attr.request, api.Zero)
 
+			// attr.requests or attr.realCapability can be less then guarantee,
+			// but queue can't deserve less resources than it has in guarantee
 			attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
 			pp.updateShare(attr)
 			klog.V(4).Infof("Format queue <%s> deserved resource to <%v>", attr.name, attr.deserved)
