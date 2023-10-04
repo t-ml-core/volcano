@@ -163,13 +163,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	for queueID, queueInfo := range ssn.Queues {
 		if _, ok := pp.queueOpts[queueID]; !ok {
-			metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
+			metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, 0)
 		}
 	}
 
 	// Record metrics
 	for _, attr := range pp.queueOpts {
-		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
 		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
 		metrics.UpdateQueueWeight(attr.name, attr.weight)
 		queue := ssn.Queues[attr.queueID]
@@ -398,8 +398,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.allocated.Add(event.Task.Resreq)
 			pp.totalNotAllocatedResources.Sub(event.Task.Resreq)
 
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
-			gpu := pp.totalNotAllocatedResources.ScalarResources[api.VolcanoGPUNumber]
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
+			gpu := pp.totalNotAllocatedResources.Get(api.GPUResourceName)
 			metrics.UpdateTotalNotAllocated(pp.totalNotAllocatedResources.MilliCPU, gpu, pp.totalNotAllocatedResources.Memory)
 
 			pp.updateShare(attr)
@@ -413,8 +413,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.allocated.Sub(event.Task.Resreq)
 			pp.totalNotAllocatedResources.Add(event.Task.Resreq)
 
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
-			gpu := pp.totalNotAllocatedResources.ScalarResources[api.VolcanoGPUNumber]
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
+			gpu := pp.totalNotAllocatedResources.Get(api.GPUResourceName)
 			metrics.UpdateTotalNotAllocated(pp.totalNotAllocatedResources.MilliCPU, gpu, pp.totalNotAllocatedResources.Memory)
 
 			pp.updateShare(attr)
