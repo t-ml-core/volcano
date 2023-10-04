@@ -216,6 +216,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		increasedDeserved := api.EmptyResource()
 		decreasedDeserved := api.EmptyResource()
 		for _, attr := range pp.queueOpts {
+			klog.V(4).Infof("Considering Queue <%s>: weight <%d>, total weight <%d>.",
+				attr.name, attr.weight, totalWeight)
 			if _, found := meet[attr.queueID]; found {
 				continue
 			}
