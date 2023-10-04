@@ -30,6 +30,14 @@ var (
 		}, []string{"queue_name"},
 	)
 
+	queueAllocatedMilliGPU = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_allocated_milli_gpu",
+			Help:      "Allocated GPU count for one queue",
+		}, []string{"queue_name"},
+	)
+
 	queueAllocatedMemory = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoNamespace,
@@ -160,8 +168,9 @@ var (
 )
 
 // UpdateQueueAllocated records allocated resources for one queue
-func UpdateQueueAllocated(queueName string, milliCPU, memory float64) {
+func UpdateQueueAllocated(queueName string, milliCPU, milliGPU, memory float64) {
 	queueAllocatedMilliCPU.WithLabelValues(queueName).Set(milliCPU)
+	queueAllocatedMilliGPU.WithLabelValues(queueName).Set(milliGPU)
 	queueAllocatedMemory.WithLabelValues(queueName).Set(memory)
 }
 
