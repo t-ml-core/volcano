@@ -187,10 +187,16 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// fairness divison of the remianing
 	for _, attr := range pp.queueOpts {
 		// Queue can't desrve less resources than it has in guarantee
+		klog.V(4).Infof("attr: <%s>, attr.deserved: <%s>, attr.guarantee: <%s>, less: <%t>",
+			attr.name, attr.deserved, attr.guarantee, attr.deserved.Less(attr.guarantee, api.Zero))
 		if attr.deserved.Less(attr.guarantee, api.Zero) {
 			guarantee := attr.guarantee.Clone()
 			attr.deserved = guarantee
+			klog.V(4).Infof("old remaining in for: <%s>, guarantee: <%s>",
+				remaining.String(), guarantee.String())
 			remaining.Sub(guarantee)
+			klog.V(4).Infof("remaining in for: <%s>, guarantee: <%s>",
+				remaining.String(), guarantee.String())
 		}
 	}
 
