@@ -187,16 +187,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// fairness divison of the remianing
 	for _, attr := range pp.queueOpts {
 		// Queue can't desrve less resources than it has in guarantee
-		klog.V(4).Infof("attr: <%s>, attr.deserved: <%s>, attr.guarantee: <%s>, less: <%t>",
-			attr.name, attr.deserved, attr.guarantee, attr.deserved.Less(attr.guarantee, api.Zero))
 		if attr.deserved.LessEqual(attr.guarantee, api.Zero) {
 			guarantee := attr.guarantee.Clone()
 			attr.deserved = guarantee
-			klog.V(4).Infof("old remaining in for: <%s>, guarantee: <%s>",
-				remaining.String(), guarantee.String())
 			remaining.Sub(guarantee)
-			klog.V(4).Infof("remaining in for: <%s>, guarantee: <%s>",
-				remaining.String(), guarantee.String())
 		}
 	}
 
@@ -223,18 +217,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		increasedDeserved := api.EmptyResource()
 		decreasedDeserved := api.EmptyResource()
 		for _, attr := range pp.queueOpts {
-			klog.V(4).Infof("Considering Queue <%s>: weight <%d>, total weight <%d>.",
-				attr.name, attr.weight, totalWeight)
 			if _, found := meet[attr.queueID]; found {
 				continue
 			}
 
 			oldDeserved := attr.deserved.Clone()
-			klog.V(4).Infof("oldDeserved: %s, remaining: %s",
-				oldDeserved.String(), remaining.String())
 			attr.deserved.Add(remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight)))
-			klog.V(4).Infof("deserved after add: %s",
-				attr.deserved.String())
 
 			if attr.realCapability != nil {
 				attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
