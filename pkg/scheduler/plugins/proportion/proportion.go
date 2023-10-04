@@ -163,13 +163,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	for queueID, queueInfo := range ssn.Queues {
 		if _, ok := pp.queueOpts[queueID]; !ok {
-			metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
+			metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, 0)
 		}
 	}
 
 	// Record metrics
 	for _, attr := range pp.queueOpts {
-		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
 		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
 		metrics.UpdateQueueWeight(attr.name, attr.weight)
 		queue := ssn.Queues[attr.queueID]
@@ -180,6 +180,19 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	remaining := pp.totalResource.Clone()
+
+	// Process guarantee resources of the queues
+	// We must substract the guarantees from the remaining before
+	// fairness divison of the remianing
+	for _, attr := range pp.queueOpts {
+		// Queue can't desrve less resources than it has in guarantee
+		if attr.deserved.LessEqual(attr.guarantee, api.Zero) {
+			guarantee := attr.guarantee.Clone()
+			attr.deserved = guarantee
+			remaining.Sub(guarantee)
+		}
+	}
+
 	meet := map[api.QueueID]struct{}{}
 	for {
 		totalWeight := int32(0)
@@ -217,6 +230,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			attr.deserved.MinDimensionResource(attr.request, api.Zero)
 
+			// attr.requests or attr.realCapability can be less then guarantee,
+			// but queue can't deserve less resources than it has in guarantee
 			attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
 			pp.updateShare(attr)
 			klog.V(4).Infof("Format queue <%s> deserved resource to <%v>", attr.name, attr.deserved)
@@ -383,8 +398,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.allocated.Add(event.Task.Resreq)
 			pp.totalNotAllocatedResources.Sub(event.Task.Resreq)
 
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
-			gpu := pp.totalNotAllocatedResources.ScalarResources[api.VolcanoGPUNumber]
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
+			gpu := pp.totalNotAllocatedResources.Get(api.GPUResourceName)
 			metrics.UpdateTotalNotAllocated(pp.totalNotAllocatedResources.MilliCPU, gpu, pp.totalNotAllocatedResources.Memory)
 
 			pp.updateShare(attr)
@@ -398,8 +413,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.allocated.Sub(event.Task.Resreq)
 			pp.totalNotAllocatedResources.Add(event.Task.Resreq)
 
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
-			gpu := pp.totalNotAllocatedResources.ScalarResources[api.VolcanoGPUNumber]
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
+			gpu := pp.totalNotAllocatedResources.Get(api.GPUResourceName)
 			metrics.UpdateTotalNotAllocated(pp.totalNotAllocatedResources.MilliCPU, gpu, pp.totalNotAllocatedResources.Memory)
 
 			pp.updateShare(attr)
