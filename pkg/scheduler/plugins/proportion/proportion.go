@@ -224,7 +224,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			oldDeserved := attr.deserved.Clone()
+			klog.V(4).Infof("oldDeserved: %s, remaining: %s",
+				oldDeserved.String(), remaining.String())
 			attr.deserved.Add(remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight)))
+			klog.V(4).Infof("deserved after add: %s",
+				attr.deserved.String())
 
 			if attr.realCapability != nil {
 				attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
