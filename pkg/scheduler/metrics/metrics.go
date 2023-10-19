@@ -146,6 +146,14 @@ var (
 			Help:      "Number of jobs could not be scheduled",
 		},
 	)
+
+	nodeFitErrorsCount = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "node_fit_errors_count",
+			Help:      "Number of node fit errors",
+		},
+	)
 )
 
 // UpdatePluginDuration updates latency for every plugin
@@ -207,6 +215,11 @@ func UpdateUnscheduleTaskCount(jobID string, taskCount int) {
 // UpdateUnscheduleJobCount records total number of unscheduleable jobs
 func UpdateUnscheduleJobCount(jobCount int) {
 	unscheduleJobCount.Set(float64(jobCount))
+}
+
+// UpdateNodeFitErrorsCount records total node fit errors
+func UpdateNodeFitErrorsCount(errorsCount int) {
+	nodeFitErrorsCount.Set(float64(errorsCount))
 }
 
 // DurationInMicroseconds gets the time in microseconds.

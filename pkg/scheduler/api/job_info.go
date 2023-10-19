@@ -317,6 +317,7 @@ type JobInfo struct {
 
 	CreationTimestamp metav1.Time
 	PodGroup          *PodGroup
+	PendingReason     scheduling.PodGroupPendingReason
 
 	ScheduleStartTimestamp metav1.Time
 

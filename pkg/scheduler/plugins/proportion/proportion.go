@@ -20,7 +20,6 @@ import (
 	"math"
 	"reflect"
 
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -347,6 +346,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
+			ssn.RecordPendingReasonEvent(job, "queue doesn't have enought deserved resources")
 		}
 
 		return allocatable
@@ -386,7 +386,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.inqueue.Add(job.GetMinResources())
 			return util.Permit
 		}
-		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
+		ssn.RecordPendingReasonEvent(job, "queue doesn't have enought free resources")
 		return util.Reject
 	})
 

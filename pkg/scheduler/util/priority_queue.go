@@ -66,6 +66,12 @@ func (q *PriorityQueue) Len() int {
 	return q.queue.Len()
 }
 
+func (pq *PriorityQueue) ForEach(action func(interface{})) {
+	for _, el := range pq.queue.items {
+		action(el)
+	}
+}
+
 func (pq *priorityQueue) Len() int { return len(pq.items) }
 
 func (pq *priorityQueue) Less(i, j int) bool {

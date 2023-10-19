@@ -37,14 +37,6 @@ var (
 			Help:      "Number of retry counts for one job",
 		}, []string{"job_id"},
 	)
-
-	guaranteeResourcesPenalty = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Subsystem: VolcanoNamespace,
-			Name:      "guarantee_resources_penalty",
-			Help:      "Number of unscheduled jobs with enough resources in guarantee quota",
-		}, []string{},
-	)
 )
 
 // UpdateJobShare records share for one job
@@ -55,11 +47,6 @@ func UpdateJobShare(jobNs, jobID string, share float64) {
 // RegisterJobRetries total number of job retries.
 func RegisterJobRetries(jobID string) {
 	jobRetryCount.WithLabelValues(jobID).Inc()
-}
-
-// RegisterGuaranteeResourcesPenalty increments the number of unsheculded jobs with enought resources.
-func RegisterGuaranteeResourcesPenalty() {
-	guaranteeResourcesPenalty.WithLabelValues().Inc()
 }
 
 // DeleteJobMetrics delete all metrics related to the job

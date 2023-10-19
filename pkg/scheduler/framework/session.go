@@ -533,6 +533,18 @@ func (ssn Session) RecordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventTy
 	ssn.recorder.Eventf(pg, eventType, reason, msg)
 }
 
+// If ji.PendingReason is empty RecordPendingReasonEvent will set PendingReason and record the event,
+// write warning to the log if it's not
+func (ssn Session) RecordPendingReasonEvent(ji *schedulingapi.JobInfo, msg string) {
+	if ji.PendingReason != "" {
+		klog.Warningf("Pending reason is already exist for job %s, can't set pending reason %s", ji.Name, msg)
+		return
+	}
+
+	ji.PendingReason = scheduling.PodGroupPendingReason(msg)
+	ssn.RecordPodGroupEvent(ji.PodGroup, v1.EventTypeNormal, string(scheduling.CantRunPodGroup), msg)
+}
+
 // String return nodes and jobs information in the session
 func (ssn Session) String() string {
 	msg := fmt.Sprintf("Session %v: \n", ssn.UID)

@@ -75,6 +75,13 @@ const (
 	PodGroupNotReady PodGroupConditionDetail = "pod group is not ready"
 )
 
+type PodGroupPendingReason string
+
+const (
+	// Reason for PodGroup pending, for more information about the reason must see event message
+	CantRunPodGroup PodGroupPendingReason = "can't run pod group"
+)
+
 // PodGroupCondition contains details for the current state of this pod group.
 type PodGroupCondition struct {
 	// Type is the type of the condition

@@ -139,6 +139,12 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			currentQueue := ssn.Queues[queueID]
 			if ssn.Overused(currentQueue) {
 				klog.V(3).Infof("Namespace <%s> Queue <%s> is overused, ignore it.", namespace, currentQueue.Name)
+
+				queueInNamespace[queueID].ForEach(func(el interface{}) {
+					ji := el.(*api.JobInfo)
+					ssn.RecordPendingReasonEvent(ji, "queue is overused")
+				})
+
 				delete(queueInNamespace, queueID)
 				continue
 			}
@@ -224,6 +230,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			var node *api.NodeInfo
 			switch {
 			case len(candidateNodes) == 0: // If not candidate nodes for this task, skip it.
+				ssn.RecordPendingReasonEvent(job, "didn't find any appropriate node")
 				continue
 			case len(candidateNodes) == 1: // If only one node after predicate, just use it.
 				node = candidateNodes[0]

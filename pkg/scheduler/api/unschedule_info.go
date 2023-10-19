@@ -91,6 +91,11 @@ func (f *FitErrors) Error() string {
 	return reasonMsg
 }
 
+// NodeCounts return the count of nodes that have an error.
+func (f *FitErrors) NodeCounts() int {
+	return len(f.nodes)
+}
+
 // FitError describe the reason why task could not fit that node
 type FitError struct {
 	taskNamespace string
