@@ -856,10 +856,3 @@ func (ji *JobInfo) IsPending() bool {
 		ji.PodGroup.Status.Phase == scheduling.PodGroupPending ||
 		ji.PodGroup.Status.Phase == ""
 }
-
-// IsPending returns whether job is in pending status
-func (ji *JobInfo) IsInqueue() bool {
-	return ji.PodGroup == nil ||
-		ji.PodGroup.Status.Phase == scheduling.PodGroupInqueue ||
-		ji.PodGroup.Status.Phase == ""
-}
