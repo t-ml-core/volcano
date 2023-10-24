@@ -542,7 +542,7 @@ func (ssn Session) RecordPendingReasonEvent(ji *schedulingapi.JobInfo, msg strin
 	}
 
 	ji.PendingReason = scheduling.PodGroupPendingReason(msg)
-	ssn.RecordPodGroupEvent(ji.PodGroup, v1.EventTypeNormal, string(scheduling.CantRunPodGroup), msg)
+	ssn.RecordPodGroupEvent(ji.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupPendingEventReason), msg)
 }
 
 // String return nodes and jobs information in the session

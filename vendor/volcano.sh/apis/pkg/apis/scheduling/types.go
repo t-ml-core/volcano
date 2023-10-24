@@ -79,7 +79,7 @@ type PodGroupPendingReason string
 
 const (
 	// Reason for PodGroup pending, for more information about the reason must see event message
-	CantRunPodGroup PodGroupPendingReason = "can't run pod group"
+	PodGroupPendingEventReason PodGroupPendingReason = "pod group is in pending"
 )
 
 // PodGroupCondition contains details for the current state of this pod group.
