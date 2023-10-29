@@ -111,8 +111,8 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	         predicate.CacheEnable: true
 	         predicate.ProportionalEnable: true
 	         predicate.resources: nvidia.com/gpu
-	         predicate.resources.nvidia.com/gpu.cpu: 4
-	         predicate.resources.nvidia.com/gpu.memory: 8
+	         predicate.resources.nvidia.com/gpu.cpu: 4     # In cores, can be floating point e.g. 0.5
+	         predicate.resources.nvidia.com/gpu.memory: 8  # In gigabytes, can be floating point e.g. 0.5
 	     - name: proportion
 	     - name: nodeorder
 	*/
