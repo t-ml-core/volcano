@@ -51,7 +51,6 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 	for _, job := range ssn.Jobs {
 		if job.IsPending() {
-			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip preemption, reason: job is pending", job.Namespace, job.Name, job.Queue)
 			continue
 		}
 
@@ -244,7 +243,12 @@ func preempt(
 		metrics.UpdatePreemptionVictimsCount(len(victims))
 
 		if err := util.ValidateVictims(preemptor, node, victims); err != nil {
-			klog.V(3).Infof("No validated victims for Task <%s/%s> on Node <%s>: %v", preemptor.Namespace, preemptor.Name, node.Name, err)
+			victimIDs := make([]string, 0, len(victims))
+			for _, v := range victims {
+				victimIDs = append(victimIDs, fmt.Sprintf("<%s/%s>", v.Namespace, v.Name))
+			}
+			klog.V(3).Infof("No validated victims for Task <%s/%s> on Node <%s>, victims %s: %v",
+				preemptor.Namespace, preemptor.Name, node.Name, victimIDs, err)
 			continue
 		}
 
@@ -266,6 +270,8 @@ func preempt(
 			// If reclaimed enough resources, break loop to avoid Sub panic.
 			// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
 			if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+				klog.V(3).Infof("Preemptor's queue is not overused and Task <%s/%s> reclaimed enough resources, skip preemption",
+					preemptor.Namespace, preemptor.Name)
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
@@ -285,6 +291,8 @@ func preempt(
 
 		// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
 		if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			klog.V(3).Infof("Preemptor's queue is not overused and Task <%s/%s> reclaimed enough resources, trying to pipeline",
+				preemptor.Namespace, preemptor.Name)
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
