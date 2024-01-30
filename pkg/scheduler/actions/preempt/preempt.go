@@ -51,6 +51,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 	for _, job := range ssn.Jobs {
 		if job.IsPending() {
+			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip preemption, reason: job is pending", job.Namespace, job.Name, job.Queue)
 			continue
 		}
 
@@ -60,6 +61,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 
 		if queue, found := ssn.Queues[job.Queue]; !found {
+			klog.V(3).Infof("Job <%s/%s> Queue <%s> not found, skip preemption", job.Namespace, job.Name, job.Queue)
 			continue
 		} else if _, existed := queues[queue.UID]; !existed {
 			klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
