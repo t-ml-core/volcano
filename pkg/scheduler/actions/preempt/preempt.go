@@ -211,7 +211,7 @@ func preempt(
 	allNodes := ssn.NodeList
 
 	if err := ssn.PrePredicateFn(preemptor); err != nil {
-		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
+		return false, fmt.Errorf("PrePredicate for Task <%s/%s> failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
 
@@ -221,7 +221,7 @@ func preempt(
 
 	job, found := ssn.Jobs[preemptor.Job]
 	if !found {
-		return false, fmt.Errorf("Job %s not found in SSN", preemptor.Job)
+		return false, fmt.Errorf("Job %s not found in SSN for Task <%s, %s>", preemptor.Job, preemptor.Namespace, preemptor.Name)
 	}
 
 	currentQueue := ssn.Queues[job.Queue]
@@ -242,7 +242,7 @@ func preempt(
 		metrics.UpdatePreemptionVictimsCount(len(victims))
 
 		if err := util.ValidateVictims(preemptor, node, victims); err != nil {
-			klog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
+			klog.V(3).Infof("No validated victims for Task <%s/%s> on Node <%s>: %v", preemptor.Namespace, preemptor.Name, node.Name, err)
 			continue
 		}
 
