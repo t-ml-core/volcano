@@ -60,6 +60,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 
 		if queue, found := ssn.Queues[job.Queue]; !found {
+			klog.V(3).Infof("Job <%s/%s> Queue <%s> not found, skip preemption", job.Namespace, job.Name, job.Queue)
 			continue
 		} else if _, existed := queues[queue.UID]; !existed {
 			klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
@@ -211,7 +212,7 @@ func preempt(
 	allNodes := ssn.NodeList
 
 	if err := ssn.PrePredicateFn(preemptor); err != nil {
-		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
+		return false, fmt.Errorf("PrePredicate for Task <%s/%s> failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
 
@@ -221,7 +222,7 @@ func preempt(
 
 	job, found := ssn.Jobs[preemptor.Job]
 	if !found {
-		return false, fmt.Errorf("Job %s not found in SSN", preemptor.Job)
+		return false, fmt.Errorf("Job %s not found in SSN for Task <%s, %s>", preemptor.Job, preemptor.Namespace, preemptor.Name)
 	}
 
 	currentQueue := ssn.Queues[job.Queue]
@@ -242,7 +243,12 @@ func preempt(
 		metrics.UpdatePreemptionVictimsCount(len(victims))
 
 		if err := util.ValidateVictims(preemptor, node, victims); err != nil {
-			klog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
+			victimIDs := make([]string, 0, len(victims))
+			for _, v := range victims {
+				victimIDs = append(victimIDs, fmt.Sprintf("<%s/%s>", v.Namespace, v.Name))
+			}
+			klog.V(3).Infof("No validated victims for Task <%s/%s> on Node <%s>, victims %s: %v",
+				preemptor.Namespace, preemptor.Name, node.Name, victimIDs, err)
 			continue
 		}
 
@@ -264,6 +270,8 @@ func preempt(
 			// If reclaimed enough resources, break loop to avoid Sub panic.
 			// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
 			if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+				klog.V(3).Infof("Preemptor's queue is not overused and Task <%s/%s> reclaimed enough resources, skip preemption",
+					preemptor.Namespace, preemptor.Name)
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
@@ -283,6 +291,8 @@ func preempt(
 
 		// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
 		if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			klog.V(3).Infof("Preemptor's queue is not overused and Task <%s/%s> reclaimed enough resources, trying to pipeline",
+				preemptor.Namespace, preemptor.Name)
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
