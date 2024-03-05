@@ -14,6 +14,7 @@ limitations under the License.
 package proportion
 
 import (
+	"io/ioutil"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -21,11 +22,8 @@ import (
 	"testing"
 	"time"
 
-	"io/ioutil"
-
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	apiv1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -102,6 +100,62 @@ func getLocalMetrics() int {
 	return data
 }
 
+type testParams struct {
+	name             string
+	pods             []*apiv1.Pod
+	nodes            []*apiv1.Node
+	pcs              []*schedulingv1.PriorityClass
+	pgs              []*schedulingv1beta1.PodGroup
+	qs               []*schedulingv1beta1.Queue
+	expectedAffinity map[string]string // jobName -> NodeName
+}
+
+func paramsToCache(t *testing.T, params testParams) *cache.SchedulerCache {
+	binder := &util.FakeBinder{
+		Binds:   map[string]string{},
+		Channel: make(chan string),
+	}
+	recorder := record.NewFakeRecorder(100)
+	go func() {
+		for {
+			event := <-recorder.Events
+			t.Logf("%s: [Event] %s", params.name, event)
+		}
+	}()
+	schedulerCache := &cache.SchedulerCache{
+		Nodes:           make(map[string]*api.NodeInfo),
+		Jobs:            make(map[api.JobID]*api.JobInfo),
+		PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
+		Queues:          make(map[api.QueueID]*api.QueueInfo),
+		Binder:          binder,
+		StatusUpdater:   &util.FakeStatusUpdater{},
+		VolumeBinder:    &util.FakeVolumeBinder{},
+		Recorder:        recorder,
+	}
+	schedulerCache.DeletedJobs = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+
+	for _, node := range params.nodes {
+		schedulerCache.AddNode(node)
+	}
+	for _, pod := range params.pods {
+		schedulerCache.AddPod(pod)
+	}
+	for _, pc := range params.pcs {
+		schedulerCache.PriorityClasses[pc.Name] = pc
+	}
+	for _, pg := range params.pgs {
+		pg.Status = schedulingv1beta1.PodGroupStatus{
+			Phase: schedulingv1beta1.PodGroupInqueue,
+		}
+		schedulerCache.AddPodGroupV1beta1(pg)
+	}
+	for _, q := range params.qs {
+		schedulerCache.AddQueueV1beta1(q)
+	}
+
+	return schedulerCache
+}
+
 func TestProportion(t *testing.T) {
 	c := make(chan bool, 1)
 	var tmp *cache.SchedulerCache
@@ -126,17 +180,13 @@ func TestProportion(t *testing.T) {
 	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodRunning, api.BuildResourceList("3", "3k"), "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
 	w2 := util.BuildPod("ns1", "worker-2", "", apiv1.PodRunning, api.BuildResourceList("5", "5k"), "pg1", map[string]string{"role": "worker"}, map[string]string{})
 	w3 := util.BuildPod("ns1", "worker-3", "", apiv1.PodRunning, api.BuildResourceList("4", "4k"), "pg2", map[string]string{"role": "worker"}, map[string]string{})
-	pw1 := util.BuildPreemptablePod("ns1", "preemptable-1", "", apiv1.PodPending, api.BuildResourceList("1", "1k"), "pg3", map[string]string{"role": "worker"}, map[string]string{})
-	pw2 := util.BuildPreemptablePod("ns1", "preemptable-2", "", apiv1.PodPending, api.BuildResourceList("3", "3k"), "pg4", map[string]string{"role": "worker"}, map[string]string{})
 	w1.Spec.Affinity = getWorkerAffinity()
 	w2.Spec.Affinity = getWorkerAffinity()
 	w3.Spec.Affinity = getWorkerAffinity()
-	pw1.Spec.Affinity = getWorkerAffinity()
-	pw2.Spec.Affinity = getWorkerAffinity()
 
 	// nodes
-	n1 := util.BuildNode("node1", api.BuildResourceList("4", "4k", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"selector": "worker"})
-	n2 := util.BuildNode("node2", api.BuildResourceList("3", "3k", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	n1 := util.BuildNode("node1", api.BuildResourceList("4", "4k"), map[string]string{"selector": "worker"})
+	n2 := util.BuildNode("node2", api.BuildResourceList("3", "3k"), map[string]string{})
 	n1.Status.Allocatable["pods"] = resource.MustParse("15")
 	n2.Status.Allocatable["pods"] = resource.MustParse("15")
 	n1.Labels["kubernetes.io/hostname"] = "node1"
@@ -156,9 +206,6 @@ func TestProportion(t *testing.T) {
 			MinMember:         int32(2),
 			PriorityClassName: p2.Name,
 		},
-		Status: schedulingv1beta1.PodGroupStatus{
-			Phase: schedulingv1beta1.PodGroupInqueue,
-		},
 	}
 	pg2 := &schedulingv1beta1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
@@ -170,37 +217,6 @@ func TestProportion(t *testing.T) {
 			MinMember:         int32(1),
 			PriorityClassName: p1.Name,
 		},
-		Status: schedulingv1beta1.PodGroupStatus{
-			Phase: schedulingv1beta1.PodGroupInqueue,
-		},
-	}
-	pg3 := &schedulingv1beta1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "ns1",
-			Name:      "pg3",
-		},
-		Spec: schedulingv1beta1.PodGroupSpec{
-			Queue:             "q1",
-			MinMember:         int32(1),
-			PriorityClassName: p1.Name,
-		},
-		Status: schedulingv1beta1.PodGroupStatus{
-			Phase: schedulingv1beta1.PodGroupPending,
-		},
-	}
-	pg4 := &schedulingv1beta1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "ns1",
-			Name:      "pg4",
-		},
-		Spec: schedulingv1beta1.PodGroupSpec{
-			Queue:             "q1",
-			MinMember:         int32(1),
-			PriorityClassName: p2.Name,
-		},
-		Status: schedulingv1beta1.PodGroupStatus{
-			Phase: schedulingv1beta1.PodGroupPending,
-		},
 	}
 	// queue
 	queue1 := &schedulingv1beta1.Queue{
@@ -208,27 +224,9 @@ func TestProportion(t *testing.T) {
 			Name: "q1",
 		},
 	}
-	queue2 := &schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "q2",
-		},
-		Spec: schedulingv1beta1.QueueSpec{
-			Guarantee: schedulingv1beta1.Guarantee{
-				Resource: api.BuildResourceList("3", "3k"),
-			},
-		},
-	}
 
 	// tests
-	tests := []struct {
-		name     string
-		pods     []*apiv1.Pod
-		nodes    []*apiv1.Node
-		pcs      []*schedulingv1.PriorityClass
-		pgs      []*schedulingv1beta1.PodGroup
-		qs       []*schedulingv1beta1.Queue
-		expected map[string]string
-	}{
+	tests := []testParams{
 		{
 			name:  "pod-deallocate",
 			pods:  []*apiv1.Pod{w1, w2, w3},
@@ -236,68 +234,12 @@ func TestProportion(t *testing.T) {
 			pcs:   []*schedulingv1.PriorityClass{p1, p2},
 			pgs:   []*schedulingv1beta1.PodGroup{pg1, pg2},
 			qs:    []*schedulingv1beta1.Queue{queue1},
-			expected: map[string]string{ // podKey -> node
-				"ns1/worker-3": "node1",
-			},
-		},
-		{
-			name:  "preemptable-pod",
-			pods:  []*apiv1.Pod{w3, pw1, pw2},
-			nodes: []*apiv1.Node{n1, n2},
-			pcs:   []*schedulingv1.PriorityClass{p1, p2},
-			pgs:   []*schedulingv1beta1.PodGroup{pg3, pg4},
-			qs:    []*schedulingv1beta1.Queue{queue1, queue2},
-			expected: map[string]string{ // podKey -> node
-				"ns1/worker-3":      "node1",
-				"ns1/preemptable-2": "node2",
-			},
 		},
 	}
 
 	for _, test := range tests {
 		// initialize schedulerCache
-		binder := &util.FakeBinder{
-			Binds:   map[string]string{},
-			Channel: make(chan string),
-		}
-		recorder := record.NewFakeRecorder(100)
-		go func() {
-			for {
-				event := <-recorder.Events
-				t.Logf("%s: [Event] %s", test.name, event)
-			}
-		}()
-		schedulerCache := &cache.SchedulerCache{
-			Nodes:           make(map[string]*api.NodeInfo),
-			Jobs:            make(map[api.JobID]*api.JobInfo),
-			PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
-			Queues:          make(map[api.QueueID]*api.QueueInfo),
-			Binder:          binder,
-			StatusUpdater:   &util.FakeStatusUpdater{},
-			VolumeBinder:    &util.FakeVolumeBinder{},
-			Recorder:        recorder,
-		}
-		// deletedJobs to DeletedJobs
-		schedulerCache.DeletedJobs = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
-
-		for _, node := range test.nodes {
-			schedulerCache.AddOrUpdateNode(node)
-		}
-		for _, pod := range test.pods {
-			schedulerCache.AddPod(pod)
-		}
-		for _, pc := range test.pcs {
-			schedulerCache.PriorityClasses[pc.Name] = pc
-		}
-		for _, pg := range test.pgs {
-			pg.Status = schedulingv1beta1.PodGroupStatus{
-				Phase: schedulingv1beta1.PodGroupInqueue,
-			}
-			schedulerCache.AddPodGroupV1beta1(pg)
-		}
-		for _, queue := range test.qs {
-			schedulerCache.AddQueueV1beta1(queue)
-		}
+		schedulerCache := paramsToCache(t, test)
 		// session
 		trueValue := true
 
@@ -305,68 +247,52 @@ func TestProportion(t *testing.T) {
 		// proportion
 		go func() {
 			for {
-				select {
-				default:
-					ssn := framework.OpenSession(schedulerCache, []conf.Tier{
-						{
-							Plugins: []conf.PluginOption{
-								{
-									Name:             PluginName,
-									EnabledPredicate: &trueValue,
-								},
-								{
-									Name:                gang.PluginName,
-									EnabledJobReady:     &trueValue,
-									EnabledJobPipelined: &trueValue,
-								},
-								{
-									Name:            priority.PluginName,
-									EnabledJobOrder: &trueValue,
-								},
+				ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+					{
+						Plugins: []conf.PluginOption{
+							{
+								Name:             PluginName,
+								EnabledPredicate: &trueValue,
+							},
+							{
+								Name:                gang.PluginName,
+								EnabledJobReady:     &trueValue,
+								EnabledJobPipelined: &trueValue,
+							},
+							{
+								Name:            priority.PluginName,
+								EnabledJobOrder: &trueValue,
 							},
 						},
-					}, nil)
-
-					allocator := allocate.New()
-					allocator.Execute(ssn)
-					framework.CloseSession(ssn)
-					time.Sleep(time.Second * 3)
-					for taskId, nodeName := range test.expected {
-						// Validate that all tasks have been scheduled
-						node, ok := ssn.Nodes[nodeName]
-						if !ok {
-							t.Errorf("can't find node with name: %s in ssn.Nodes: %v", nodeName, ssn.Nodes)
-						}
-						_, ok = node.Tasks[api.TaskID(taskId)]
-						if !ok {
-							t.Errorf("can't find task with id: %s on node %s with tasks: %v", taskId, node.Name, node.Tasks)
-						}
+					},
+				}, nil)
+				allocator := allocate.New()
+				allocator.Execute(ssn)
+				time.Sleep(time.Second * 3)
+				framework.CloseSession(ssn)
+				if num == 1 {
+					metrics := getLocalMetrics()
+					if metrics == 12000 {
+						t.Logf("init queue_allocated metrics is ok,%v", metrics)
 					}
-
-					if num == 1 {
-						metrics := getLocalMetrics()
-						if metrics == 12000 {
-							t.Logf("init queue_allocated metrics is ok,%v", metrics)
-						}
-						schedulerCache.DeletePodGroupV1beta1(pg1)
-					} else if num == 2 {
-						metrics := getLocalMetrics()
-						if metrics == 4000 {
-							t.Logf("after delete vcjob pg1, queue_allocated metrics is ok,%v", metrics)
-						}
-						schedulerCache.DeletePodGroupV1beta1(pg2)
-					} else {
-						metrics := getLocalMetrics()
-						if metrics != 0 {
-							t.Errorf("after delete vcjob pg2, queue_allocated metrics is fail,%v", metrics)
-							c <- false
-							return
-						}
-						t.Logf("after delete vcjob pg2, queue_allocated metrics is ok,%v", metrics)
-						c <- true
+					schedulerCache.DeletePodGroupV1beta1(pg1)
+				} else if num == 2 {
+					metrics := getLocalMetrics()
+					if metrics == 4000 {
+						t.Logf("after delete vcjob pg1, queue_allocated metrics is ok,%v", metrics)
 					}
-					num++
+					schedulerCache.DeletePodGroupV1beta1(pg2)
+				} else {
+					metrics := getLocalMetrics()
+					if metrics != 0 {
+						t.Errorf("after delete vcjob pg2, queue_allocated metrics is fail,%v", metrics)
+						c <- false
+						return
+					}
+					t.Logf("after delete vcjob pg2, queue_allocated metrics is ok,%v", metrics)
+					c <- true
 				}
+				num++
 			}
 		}()
 
@@ -378,17 +304,144 @@ func TestProportion(t *testing.T) {
 			}
 		}()
 
-		for {
-			select {
-			case res := <-c:
-				if !res {
-					t.Error("TestProportion failed")
-				} else {
-					t.Log("TestProportion successful")
-				}
-				return
+		for res := range c {
+			if !res {
+				t.Error("TestProportion failed")
+			} else {
+				t.Log("TestProportion successful")
+			}
+			return
+		}
+	}
+}
+
+func TestGuarantee(t *testing.T) {
+	framework.RegisterPluginBuilder(PluginName, New)
+	options.ServerOpts = options.NewServerOption()
+	defer framework.CleanupPluginBuilders()
+
+	// Pending pods
+	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodPending, api.BuildResourceList("4", "4k"), "pg1", map[string]string{"role": "worker"}, map[string]string{})
+	w2 := util.BuildPod("ns2", "worker-2", "", apiv1.PodPending, api.BuildResourceList("6", "6k"), "pg2", map[string]string{"role": "worker"}, map[string]string{})
+	w3 := util.BuildPod("ns3", "worker-3", "", apiv1.PodPending, api.BuildResourceList("4", "4k"), "pg3", map[string]string{"role": "worker"}, map[string]string{})
+	w1.Spec.Affinity = getWorkerAffinity()
+	w2.Spec.Affinity = getWorkerAffinity()
+
+	// nodes
+	n1 := util.BuildNode("node1", api.BuildResourceList("8", "8k"), map[string]string{"selector": "worker"})
+	n1.Status.Allocatable["pods"] = resource.MustParse("15")
+	n1.Labels["kubernetes.io/hostname"] = "node1"
+
+	// podgroup
+	pg1 := &schedulingv1beta1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "ns1",
+			Name:      "pg1",
+		},
+		Spec: schedulingv1beta1.PodGroupSpec{
+			Queue:     "q1",
+			MinMember: int32(1),
+		},
+	}
+	pg2 := &schedulingv1beta1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "ns2",
+			Name:      "pg2",
+		},
+		Spec: schedulingv1beta1.PodGroupSpec{
+			Queue:     "q2",
+			MinMember: int32(1),
+		},
+	}
+	pg3 := &schedulingv1beta1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "ns3",
+			Name:      "pg3",
+		},
+		Spec: schedulingv1beta1.PodGroupSpec{
+			Queue:     "q3",
+			MinMember: int32(1),
+		},
+	}
+	// queue
+	queue1 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "q1",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+	// queue with guarantee
+	queue2 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "q2",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: api.BuildResourceList("6", "6k"),
+			},
+		},
+	}
+	queue3 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "q3",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+
+	// tests
+	tests := []testParams{
+		{
+			name:  "remaining-sub-panic",
+			pods:  []*apiv1.Pod{w1, w2, w3},
+			nodes: []*apiv1.Node{n1},
+			pgs:   []*schedulingv1beta1.PodGroup{pg1, pg2, pg3},
+			qs:    []*schedulingv1beta1.Queue{queue1, queue2, queue3},
+			expectedAffinity: map[string]string{
+				"ns2-worker2": "node1",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		// initialize schedulerCache
+		schedulerCache := paramsToCache(t, test)
+
+		// session
+		trueValue := true
+
+		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{
+						Name:             PluginName,
+						EnabledPredicate: &trueValue,
+					},
+				},
+			},
+		}, nil)
+
+		allocator := allocate.New()
+		allocator.Execute(ssn)
+
+		for _, job := range ssn.Jobs {
+			expectedNode, exist := test.expectedAffinity[job.Name]
+			if !exist {
+				// Doesn't have an affinity constraint for this job
+				continue
 			}
 
+			// All tasks of the job must be on the expectedAffinity node
+			for _, task := range job.Tasks {
+				if task.Pod.Spec.NodeName != expectedNode {
+					t.Logf("expected affinity <%s> for task <%s>", expectedNode, task.Pod.Spec.NodeName)
+					t.Fail()
+				}
+			}
 		}
 	}
 }
