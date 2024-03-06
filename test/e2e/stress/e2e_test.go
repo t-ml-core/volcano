@@ -16,9 +16,6 @@ limitations under the License.
 
 package stress
 
-import (
-)
-
 // func TestE2E(t *testing.T) {
 // 	RegisterFailHandler(Fail)
 // 	RunSpecs(t, "Volcano Stress Test Suite")

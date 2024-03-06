@@ -16,9 +16,6 @@ limitations under the License.
 
 package schedulingbase
 
-import (
-)
-
 // func TestE2E(t *testing.T) {
 // 	RegisterFailHandler(Fail)
 // 	RunSpecs(t, "Volcano Scheduler Test Suite")
