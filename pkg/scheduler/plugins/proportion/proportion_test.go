@@ -158,7 +158,8 @@ func paramsToCache(t *testing.T, params testParams) *cache.SchedulerCache {
 
 func TestProportion(t *testing.T) {
 	c := make(chan bool, 1)
-	var tmp *cache.SchedulerCache
+	tmp := cache.New(nil, make([]string, 0), "", make([]string, 0), 2, make([]string, 0))
+
 	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, task *api.TaskInfo) error {
 		scCache.Binder.Bind(nil, []*api.TaskInfo{task})
 		return nil
