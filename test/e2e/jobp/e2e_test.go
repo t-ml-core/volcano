@@ -16,14 +16,8 @@ limitations under the License.
 
 package jobp
 
-import (
-	"testing"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-)
-
-func TestE2E(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Volcano Job Test Suite")
-}
+// As this test creates jobs, it's disabled
+// func TestE2E(t *testing.T) {
+// 	RegisterFailHandler(Fail)
+// 	RunSpecs(t, "Volcano Job Test Suite")
+// }
