@@ -28,7 +28,6 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
@@ -159,7 +158,7 @@ func paramsToCache(t *testing.T, params testParams) *cache.SchedulerCache {
 
 func TestProportion(t *testing.T) {
 	c := make(chan bool, 1)
-	tmp := cache.New(&rest.Config{}, make([]string, 0), "", make([]string, 0), 2, make([]string, 0))
+	tmp := cache.NewMockSchedulerCache()
 
 	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, task *api.TaskInfo) error {
 		scCache.Binder.Bind(nil, []*api.TaskInfo{task})

@@ -398,6 +398,26 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	return job, nil
 }
 
+// Need this dummy function for tests
+func NewMockSchedulerCache() *SchedulerCache {
+	return &SchedulerCache{
+		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Nodes:               make(map[string]*schedulingapi.NodeInfo),
+		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
+		errTasks:            workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		nodeQueue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		nodeSelectorLabels:  make(map[string]string),
+		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
+		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
+		imageStates:         make(map[string]*imageState),
+
+		NodeList:    []string{},
+		nodeWorkers: 2,
+	}
+}
+
 func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
