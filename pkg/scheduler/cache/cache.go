@@ -1035,6 +1035,7 @@ func (sc *SchedulerCache) processSyncNode() bool {
 	err := sc.SyncNode(nodeName)
 	if err == nil {
 		sc.nodeQueue.Forget(nodeName)
+		klog.Infof("finish processing node %s from nodeQueue", nodeName)
 		return true
 	}
 

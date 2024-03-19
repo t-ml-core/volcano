@@ -547,6 +547,7 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 		return
 	}
 	sc.nodeQueue.Add(node.Name)
+	klog.Infof("Added new node %s into nodeQueue", node.Name)
 }
 
 // UpdateNode update node to scheduler cache
