@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -461,12 +462,15 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	klog.Infof("Create init queue named default")
 
 	sc := &SchedulerCache{
-		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Nodes:               make(map[string]*schedulingapi.NodeInfo),
-		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
-		errTasks:            workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		nodeQueue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		Jobs:            make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Nodes:           make(map[string]*schedulingapi.NodeInfo),
+		Queues:          make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
+		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		nodeQueue: workqueue.NewRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
+			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 1000*time.Second),
+			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
+		)),
 		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
@@ -1050,6 +1054,7 @@ func (sc *SchedulerCache) processSyncNode() bool {
 	err := sc.SyncNode(nodeName)
 	if err == nil {
 		sc.nodeQueue.Forget(nodeName)
+		klog.Infof("finish processing node %s from nodeQueue", nodeName)
 		return true
 	}
 
