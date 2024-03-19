@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -441,12 +442,16 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	klog.Infof("Create init queue named default")
 
 	sc := &SchedulerCache{
-		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Nodes:               make(map[string]*schedulingapi.NodeInfo),
-		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
-		errTasks:            workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		nodeQueue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		Jobs:            make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Nodes:           make(map[string]*schedulingapi.NodeInfo),
+		Queues:          make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
+		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		nodeQueue: workqueue.NewRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
+			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 1000*time.Second),
+			// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
+			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
+		)),
 		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
