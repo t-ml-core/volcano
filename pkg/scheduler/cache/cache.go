@@ -724,11 +724,12 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	sc.vcInformerFactory.Start(stopCh)
 	sc.WaitForCacheSync(stopCh)
 	// We have to wait until all nodes are handled
-	// If we don't total amount of guaranted resources might be gretear than
-	// total amount of resources
+	// If we don't, the total amount of guaranteed resources might be greater
+	// than the total amount of resources
 	// Can use busy loop because this method is called only once
-	for sc.nodeQueue.Len() != 0 {
-	}
+	klog.V(3).Info("wait for nodes sync")
+	sc.WaitForNodesSync()
+	klog.V(3).Info("node sync finished")
 	for i := 0; i < int(sc.nodeWorkers); i++ {
 		go wait.Until(sc.runNodeWorker, 0, stopCh)
 	}
@@ -755,6 +756,14 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 	sc.informerFactory.WaitForCacheSync(stopCh)
 	sc.vcInformerFactory.WaitForCacheSync(stopCh)
+}
+
+func (sc *SchedulerCache) WaitForNodesSync() {
+	ticker := time.NewTicker(time.Millisecond)
+	for sc.nodeQueue.Len() != 0 {
+		<-ticker.C
+	}
+	ticker.Stop()
 }
 
 // findJobAndTask returns job and the task info
