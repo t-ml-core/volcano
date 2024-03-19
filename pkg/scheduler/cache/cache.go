@@ -723,6 +723,12 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
 	sc.WaitForCacheSync(stopCh)
+	// We have to wait until all nodes are handled
+	// If we don't total amount of guaranted resources might be gretear than
+	// total amount of resources
+	// Can use busy loop because this method is called only once
+	for sc.nodeQueue.Len() != 0 {
+	}
 	for i := 0; i < int(sc.nodeWorkers); i++ {
 		go wait.Until(sc.runNodeWorker, 0, stopCh)
 	}
