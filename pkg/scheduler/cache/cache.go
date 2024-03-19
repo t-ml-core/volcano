@@ -723,6 +723,10 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
 	sc.WaitForCacheSync(stopCh)
+	for i := 0; i < int(sc.nodeWorkers); i++ {
+		go wait.Until(sc.runNodeWorker, 0, stopCh)
+	}
+
 	// We have to wait until all nodes are handled
 	// If we don't, the total amount of guaranteed resources might be greater
 	// than the total amount of resources
@@ -730,9 +734,6 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	klog.V(3).Info("wait for nodes sync")
 	sc.WaitForNodesSync()
 	klog.V(3).Info("node sync finished")
-	for i := 0; i < int(sc.nodeWorkers); i++ {
-		go wait.Until(sc.runNodeWorker, 0, stopCh)
-	}
 
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
