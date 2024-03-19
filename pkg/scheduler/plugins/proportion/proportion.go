@@ -35,9 +35,10 @@ import (
 const PluginName = "proportion"
 
 type proportionPlugin struct {
-	totalResource  *api.Resource
-	totalGuarantee *api.Resource
-	queueOpts      map[api.QueueID]*queueAttr
+	totalResource              *api.Resource
+	totalGuarantee             *api.Resource
+	totalNotAllocatedResources *api.Resource
+	queueOpts                  map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
 }
@@ -163,13 +164,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	for queueID, queueInfo := range ssn.Queues {
 		if _, ok := pp.queueOpts[queueID]; !ok {
-			metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
+			metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, 0)
 		}
 	}
 
 	// Record metrics
 	for _, attr := range pp.queueOpts {
-		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
 		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
 		metrics.UpdateQueueWeight(attr.name, attr.weight)
 		queue := ssn.Queues[attr.queueID]
@@ -180,6 +181,19 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	remaining := pp.totalResource.Clone()
+
+	// Process guarantee resources of the queues
+	// We must substract the guarantees from the remaining before
+	// fairness divison of the remianing
+	for _, attr := range pp.queueOpts {
+		// Queue can't desrve less resources than it has in guarantee
+		if attr.deserved.LessEqual(attr.guarantee, api.Zero) {
+			guarantee := attr.guarantee.Clone()
+			attr.deserved = guarantee
+			remaining.Sub(guarantee)
+		}
+	}
+
 	meet := map[api.QueueID]struct{}{}
 	for {
 		totalWeight := int32(0)
@@ -217,6 +231,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			attr.deserved.MinDimensionResource(attr.request, api.Zero)
 
+			// attr.requests or attr.realCapability can be less then guarantee,
+			// but queue can't deserve less resources than it has in guarantee
 			attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
 			pp.updateShare(attr)
 			klog.V(4).Infof("Format queue <%s> deserved resource to <%v>", attr.name, attr.deserved)
@@ -246,6 +262,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infof("Exiting when remaining is empty or no queue has more resource request:  <%v>", remaining)
 			break
 		}
+	}
+
+	// We allow execution of preemptable tasks over guaranteed resources
+	// so we need to understand how many resources are available in a cluster
+	pp.totalNotAllocatedResources = pp.totalResource.Clone()
+	for _, attr := range pp.queueOpts {
+		pp.totalNotAllocatedResources.Sub(attr.allocated)
 	}
 
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
@@ -305,6 +328,19 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		job, found := ssn.Jobs[candidate.Job]
+		preemptable := false
+		if !found {
+			klog.V(3).Infof("Can't find job by id for task: <%v>", candidate)
+		} else {
+			preemptable = job.Preemptable
+		}
+
+		// Allow allocation over guaranteed resources for preemptable jobs
+		if preemptable && candidate.Resreq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
+			return true
+		}
+
 		attr := pp.queueOpts[queue.UID]
 
 		free, _ := attr.deserved.Diff(attr.allocated, api.Zero)
@@ -335,8 +371,15 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		minReq := job.GetMinResources()
 
-		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s>",
-			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String())
+		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s> notAllocated: <%s>",
+			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String(), pp.totalNotAllocatedResources.String())
+
+		// Allow preemptable jobs to be inqueue over guaranteed resources
+		if job.Preemptable && minReq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
+			klog.V(4).Infof("job <%s> is preemptable, allow to Inqueue.", queue.Name)
+			return util.Permit
+		}
+
 		// The queue resource quota limit has not reached
 		r := minReq.Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 		rr := attr.realCapability.Clone()
@@ -363,7 +406,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			pp.totalNotAllocatedResources.Sub(event.Task.Resreq)
+
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
+			gpu := pp.totalNotAllocatedResources.Get(api.GPUResourceName)
+			metrics.UpdateTotalNotAllocated(pp.totalNotAllocatedResources.MilliCPU, gpu, pp.totalNotAllocatedResources.Memory)
 
 			pp.updateShare(attr)
 
@@ -374,7 +421,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			pp.totalNotAllocatedResources.Add(event.Task.Resreq)
+
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
+			gpu := pp.totalNotAllocatedResources.Get(api.GPUResourceName)
+			metrics.UpdateTotalNotAllocated(pp.totalNotAllocatedResources.MilliCPU, gpu, pp.totalNotAllocatedResources.Memory)
 
 			pp.updateShare(attr)
 
@@ -387,6 +438,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 func (pp *proportionPlugin) OnSessionClose(ssn *framework.Session) {
 	pp.totalResource = nil
 	pp.totalGuarantee = nil
+	pp.totalNotAllocatedResources = nil
 	pp.queueOpts = nil
 }
 

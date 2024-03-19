@@ -30,6 +30,14 @@ var (
 		}, []string{"queue_name"},
 	)
 
+	queueAllocatedMilliGPU = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_allocated_milli_gpu",
+			Help:      "Allocated GPU count for one queue",
+		}, []string{"queue_name"},
+	)
+
 	queueAllocatedMemory = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoNamespace,
@@ -125,11 +133,44 @@ var (
 			Help:      "The number of Unknown PodGroup in this queue",
 		}, []string{"queue_name"},
 	)
+
+	queuePodGroupCompleted = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_pod_group_completed_count",
+			Help:      "The number of Completed PodGroup in this queue",
+		}, []string{"queue_name"},
+	)
+
+	totalNotAllocatedMilliCpu = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "total_not_allocated_milli_cpu",
+			Help:      "The number of free milli cpus in a cluster",
+		}, []string{},
+	)
+
+	totalNotAllocatedMilliGpu = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "total_not_allocated_milli_gpu",
+			Help:      "The number of free milli gpus in a cluster",
+		}, []string{},
+	)
+
+	totalNotAllocatedMemory = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "total_not_allocated_memory",
+			Help:      "The number of free memory in a cluster",
+		}, []string{},
+	)
 )
 
 // UpdateQueueAllocated records allocated resources for one queue
-func UpdateQueueAllocated(queueName string, milliCPU, memory float64) {
+func UpdateQueueAllocated(queueName string, milliCPU, milliGPU, memory float64) {
 	queueAllocatedMilliCPU.WithLabelValues(queueName).Set(milliCPU)
+	queueAllocatedMilliGPU.WithLabelValues(queueName).Set(milliGPU)
 	queueAllocatedMemory.WithLabelValues(queueName).Set(memory)
 }
 
@@ -186,6 +227,18 @@ func UpdateQueuePodGroupUnknownCount(queueName string, count int32) {
 	queuePodGroupUnknown.WithLabelValues(queueName).Set(float64(count))
 }
 
+// UpdateQueuePodGroupCompletedCount records the number of completed pods
+func UpdateQueuePodGroupCompletedCount(queueName string, count int32) {
+	queuePodGroupCompleted.WithLabelValues(queueName).Set(float64(count))
+}
+
+// UpdateTotalNotAllocated updates totalNotAllocated gauges
+func UpdateTotalNotAllocated(milliCPU, milliGPU, memory float64) {
+	totalNotAllocatedMilliCpu.WithLabelValues().Set(milliCPU)
+	totalNotAllocatedMilliGpu.WithLabelValues().Set(milliGPU)
+	totalNotAllocatedMemory.WithLabelValues().Set(memory)
+}
+
 // DeleteQueueMetrics delete all metrics related to the queue
 func DeleteQueueMetrics(queueName string) {
 	queueAllocatedMilliCPU.DeleteLabelValues(queueName)
@@ -201,4 +254,5 @@ func DeleteQueueMetrics(queueName string) {
 	queuePodGroupPending.DeleteLabelValues(queueName)
 	queuePodGroupRunning.DeleteLabelValues(queueName)
 	queuePodGroupUnknown.DeleteLabelValues(queueName)
+	queuePodGroupCompleted.DeleteLabelValues(queueName)
 }

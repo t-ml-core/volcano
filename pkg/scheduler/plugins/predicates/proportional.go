@@ -18,11 +18,32 @@ package predicates
 
 import (
 	"fmt"
+	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
+
+const TaskIgnoreProportionAnnotation = "volcano.sh/ignore-proportion"
+
+func shouldIgnoreProportion(task *api.TaskInfo) bool {
+	if task.Pod == nil {
+		return false
+	}
+
+	val, found := task.Pod.Annotations[TaskIgnoreProportionAnnotation]
+	if !found {
+		return false
+	}
+
+	ignore, err := strconv.ParseBool(val)
+	if err != nil {
+		return false
+	}
+
+	return ignore
+}
 
 // checkNodeResourceIsProportional checks if a gpu:cpu:memory is Proportional
 func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, proportional map[v1.ResourceName]baseResource) (*api.Status, error) {
@@ -35,15 +56,24 @@ func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, pro
 		}
 	}
 
+	if shouldIgnoreProportion(task) {
+		return status, nil
+	}
+
 	for resourceName, resourceRate := range proportional {
 		if value, found := node.Idle.ScalarResources[resourceName]; found {
-			cpuReserved := value * resourceRate.CPU
-			memoryReserved := value * resourceRate.Memory * 1000 * 1000
+			milliCpuReserved := value * resourceRate.CPU // value already in millis
+			memoryBytesReserved := (value / 1000) * resourceRate.Memory * 1024 * 1024 * 1024
 
-			if node.Idle.MilliCPU-task.Resreq.MilliCPU < cpuReserved || node.Idle.Memory-task.Resreq.Memory < memoryReserved {
+			if node.Idle.MilliCPU-task.Resreq.MilliCPU < milliCpuReserved {
 				status.Code = api.UnschedulableAndUnresolvable
 				status.Reason = fmt.Sprintf("proportional of resource %s check failed", resourceName)
-				return status, fmt.Errorf("proportional of resource %s check failed", resourceName)
+				return status, fmt.Errorf("proportional of resource %s check failed: insufficent cpu", resourceName)
+			}
+			if node.Idle.Memory-task.Resreq.Memory < memoryBytesReserved {
+				status.Code = api.UnschedulableAndUnresolvable
+				status.Reason = fmt.Sprintf("proportional of resource %s check failed", resourceName)
+				return status, fmt.Errorf("proportional of resource %s check failed: insufficent memory", resourceName)
 			}
 		}
 	}

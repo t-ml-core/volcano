@@ -60,6 +60,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 
 		if queue, found := ssn.Queues[job.Queue]; !found {
+			klog.V(3).Infof("Job <%s/%s> Queue <%s> not found, skip preemption", job.Namespace, job.Name, job.Queue)
 			continue
 		} else if _, existed := queues[queue.UID]; !existed {
 			klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
@@ -128,7 +129,11 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					if !found {
 						return false
 					}
-					// Preempt other jobs within queue
+
+					if !preemptor.Preemptable {
+						return preemptor.Job != task.Job
+					}
+
 					return job.Queue == preemptorJob.Queue && preemptor.Job != task.Job
 				}, ph); preempted {
 					assigned = true
@@ -205,7 +210,7 @@ func preempt(
 	assigned := false
 	allNodes := ssn.NodeList
 	if err := ssn.PrePredicateFn(preemptor); err != nil {
-		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
+		return false, fmt.Errorf("PrePredicate for Task <%s/%s> failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
@@ -230,7 +235,7 @@ func preempt(
 
 	job, found := ssn.Jobs[preemptor.Job]
 	if !found {
-		return false, fmt.Errorf("Job %s not found in SSN", preemptor.Job)
+		return false, fmt.Errorf("Job %s not found in SSN for Task <%s, %s>", preemptor.Job, preemptor.Namespace, preemptor.Name)
 	}
 
 	currentQueue := ssn.Queues[job.Queue]
@@ -251,7 +256,12 @@ func preempt(
 		metrics.UpdatePreemptionVictimsCount(len(victims))
 
 		if err := util.ValidateVictims(preemptor, node, victims); err != nil {
-			klog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
+			victimIDs := make([]string, 0, len(victims))
+			for _, v := range victims {
+				victimIDs = append(victimIDs, fmt.Sprintf("<%s/%s>", v.Namespace, v.Name))
+			}
+			klog.V(3).Infof("No validated victims for Task <%s/%s> on Node <%s>, victims %s: %v",
+				preemptor.Namespace, preemptor.Name, node.Name, victimIDs, err)
 			continue
 		}
 
@@ -271,8 +281,18 @@ func preempt(
 
 		for !victimsQueue.Empty() {
 			// If reclaimed enough resources, break loop to avoid Sub panic.
-			// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
-			if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			// Preempt action is about preempt in same queue, which job is not allocatable in allocate action, due to:
+			// 1. cluster has free resource, but queue not allocatable
+			// 2. cluster has no free resource, but queue not allocatable
+			// 3. cluster has no free resource, but queue allocatable
+			// for case 1 and 2, high priority job/task can preempt low priority job/task in same queue;
+			// for case 3, it need to do reclaim resource from other queue, in reclaim action;
+			// so if current queue is not allocatable(the queue will be overused when consider current preemptor's requests)
+			// or current idle resource is not enougth for preemptor, it need to continue preempting
+			// otherwise, break out
+			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+				klog.V(3).Infof("Preemptor's queue is allocatable and Task <%s/%s> reclaimed enough resources, skip preemption",
+					preemptor.Namespace, preemptor.Name)
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
@@ -291,7 +311,9 @@ func preempt(
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
 		// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
-		if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			klog.V(3).Infof("Preemptor's queue is allocatable and Task <%s/%s> reclaimed enough resources, trying to pipeline",
+				preemptor.Namespace, preemptor.Name)
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
