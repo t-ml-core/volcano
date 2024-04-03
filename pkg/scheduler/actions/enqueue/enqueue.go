@@ -58,6 +58,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		if queue, found := ssn.Queues[job.Queue]; !found {
 			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
+			job.UpdateStatusReason("can't find job's queue")
 			continue
 		} else if !queueSet.Has(string(queue.UID)) {
 			klog.V(5).Infof("Added Queue <%s> for Job <%s/%s>",
@@ -94,7 +95,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 
 		if job.PodGroup.Spec.MinResources == nil || ssn.JobEnqueueable(job) {
 			ssn.JobEnqueued(job)
-			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
+			job.UpdateStatus(scheduling.PodGroupInqueue)
 			ssn.Jobs[job.UID] = job
 		}
 

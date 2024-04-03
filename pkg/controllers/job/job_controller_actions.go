@@ -283,7 +283,11 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
 			syncTask = true
 		}
-
+		
+		// if the status change then reason will be deleted by the updateStatus function
+		if pg.Status.Phase == scheduling.PodGroupInqueue || pg.Status.Phase == scheduling.PodGroupPending {
+			job.Status.State.Reason = pg.Status.Reason
+		}
 		for _, condition := range pg.Status.Conditions {
 			if condition.Type == scheduling.PodGroupUnschedulableType {
 				cc.recorder.Eventf(job, v1.EventTypeWarning, string(batch.PodGroupPending),

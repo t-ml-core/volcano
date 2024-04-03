@@ -35,6 +35,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 // DisruptionBudget define job min pod available and max pod unvailable value
@@ -532,6 +533,26 @@ func (ji *JobInfo) UpdateTaskStatus(task *TaskInfo, status TaskStatus) error {
 	task.Status = status
 	ji.AddTaskInfo(task)
 
+	return nil
+}
+
+func (ji *JobInfo) UpdateStatus(status scheduling.PodGroupPhase) error {
+	if ji.PodGroup == nil {
+		return fmt.Errorf("can't set status pg is nil")
+	}
+	ji.PodGroup.Status.Phase = status
+	ji.PodGroup.Status.Reason = ""
+	return nil
+}
+
+func (ji *JobInfo) UpdateStatusReason(reason string) error {
+	if ji.PodGroup == nil {
+		return fmt.Errorf("can't set status reason pg is nil")
+	}
+	if ji.PodGroup.Status.Reason != reason {
+		metrics.SetPendingReason(ji.Name, reason)
+	}
+	ji.PodGroup.Status.Reason = reason
 	return nil
 }
 

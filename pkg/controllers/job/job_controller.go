@@ -335,6 +335,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 		return true
 	}
 
+	// TODO: где-то тут надо проставлять поле
 	st := state.NewState(jobInfo)
 	if st == nil {
 		klog.Errorf("Invalid state <%s> of Job <%v/%v>",

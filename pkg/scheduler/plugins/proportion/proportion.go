@@ -348,6 +348,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
+			job.UpdateStatusReason("resreq is greater than deserved")
 		}
 
 		return allocatable
@@ -397,6 +398,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Permit
 		}
 		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
+		job.UpdateStatusReason("queue resource quota insufficient")
 		return util.Reject
 	})
 

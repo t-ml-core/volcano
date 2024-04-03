@@ -430,7 +430,8 @@ func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 			"Failed to find job in cache by PodGroup(%s/%s), this may not be a PodGroup for volcano job.", newPG.Namespace, newPG.Name)
 	}
 
-	if newPG.Status.Phase != oldPG.Status.Phase {
+	if newPG.Status.Phase != oldPG.Status.Phase ||
+		newPG.Status.Reason != oldPG.Status.Reason {
 		req := apis.Request{
 			Namespace: newPG.Namespace,
 			JobName:   jobNameKey,

@@ -68,7 +68,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		} else if job.IsPending() {
 			klog.V(4).Infof("Job <%s/%s> Queue <%s> status update from pending to inqueue, reason: no enqueue action is configured.",
 				job.Namespace, job.Name, job.Queue)
-			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
+			job.UpdateStatus(scheduling.PodGroupInqueue)
 		}
 
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
@@ -79,6 +79,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		if _, found := ssn.Queues[job.Queue]; !found {
 			klog.Warningf("Skip adding Job <%s/%s> because its queue %s is not found",
 				job.Namespace, job.Name, job.Queue)
+			job.UpdateStatusReason("can't find job's queue in allocate")
 			continue
 		}
 
@@ -145,6 +146,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if task.Resreq.IsEmpty() {
 					klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
 						task.Namespace, task.Name)
+					job.UpdateStatusReason("resreq is empty")
 					continue
 				}
 
@@ -171,6 +173,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			if !ssn.Allocatable(queue, task) {
 				klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
+				job.UpdateStatusReason("queue is overused in allocate")
 				continue
 			}
 
@@ -183,12 +186,14 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					fitErrors.SetNodeError(ni.Name, err)
 				}
 				job.NodesFitErrors[task.UID] = fitErrors
+				job.UpdateStatusReason("node errors")
 				break
 			}
 
 			predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, predicateFn, true)
 			if len(predicateNodes) == 0 {
 				job.NodesFitErrors[task.UID] = fitErrors
+				job.UpdateStatusReason("can't find predicate nodes")
 				break
 			}
 
@@ -236,6 +241,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 				// If a proper node is found in idleCandidateNodes, skip futureIdleCandidateNodes and directly return the node information.
 				if bestNode != nil {
+					job.UpdateStatusReason("can't select best node")
 					break
 				}
 			}
@@ -247,6 +253,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if err := stmt.Allocate(task, bestNode); err != nil {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 						task.UID, bestNode.Name, ssn.UID, err)
+					job.UpdateStatusReason("failed to bind Task on the node")
 				} else {
 					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
