@@ -283,7 +283,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
 			syncTask = true
 		}
-		
+
 		// if the status change then reason will be deleted by the updateStatus function
 		if pg.Status.Phase == scheduling.PodGroupInqueue || pg.Status.Phase == scheduling.PodGroupPending {
 			job.Status.State.Reason = pg.Status.Reason
@@ -695,6 +695,9 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 					Queue:             job.Spec.Queue,
 					MinResources:      cc.calcPGMinResources(job),
 					PriorityClassName: job.Spec.PriorityClassName,
+				},
+				Status: scheduling.PodGroupStatus{
+					Reason: "created",
 				},
 			}
 
