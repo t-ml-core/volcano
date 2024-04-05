@@ -17,7 +17,6 @@ limitations under the License.
 package proportion
 
 import (
-	"fmt"
 	"math"
 	"reflect"
 
@@ -75,6 +74,24 @@ func New(arguments framework.Arguments) framework.Plugin {
 
 func (pp *proportionPlugin) Name() string {
 	return PluginName
+}
+
+func (pp *proportionPlugin) calculateTotalResources() {
+	// We allow execution of preemptable tasks over guaranteed resources,
+	// so we need to understand how many resources are available in a cluster
+	totalAllocatedResources := api.EmptyResource()
+	for _, attr := range pp.queueOpts {
+		totalAllocatedResources.Add(attr.allocated)
+	}
+
+	// TODO: this crunch should be replaced with the following logic:
+	// should calculate totalNotAllocatedResources as follows: walk all
+	// allocated tasks and if a node doesn't have gpu resources, add gpu resources from the task
+	// otherwise if node has gpu resources, should subtract resources. Scheduler actions will believe that these
+	// gpus are available and may schedule another task, then it would be panic in the AllocateFunc
+	pp.totalResource.SetMaxResource(totalAllocatedResources)
+
+	pp.totalNotAllocatedResources = pp.totalResource.Clone().Sub(totalAllocatedResources)
 }
 
 func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
@@ -265,22 +282,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	// We allow execution of preemptable tasks over guaranteed resources,
-	// so we need to understand how many resources are available in a cluster
-	totalAllocatedResources := api.EmptyResource()
-	for _, attr := range pp.queueOpts {
-		totalAllocatedResources.Add(attr.allocated)
-	}
-
-	// TODO: this crunch should be replaced with the following logic:
-	// should calculate totalNotAllocatedResources as follows: walk all
-	// allocated tasks and if a node doesn't have gpu resources, add gpu resources from the task
-	// otherwise if node has gpu resources, should subtract resources. Scheduler actions will believe that these
-	// gpus are available and may schedule another task, then it would be panic in the AllocateFunc
-	pp.totalResource.SetMaxResource(totalAllocatedResources)
-
-	pp.totalNotAllocatedResources = pp.totalResource.Clone()
-	pp.totalNotAllocatedResources.Sub(totalAllocatedResources)
+	pp.calculateTotalResources()
 
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
@@ -417,14 +419,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
-			// TODO: this crunch should be replaced
-			if pp.totalNotAllocatedResources.Less(event.Task.Resreq, api.Zero) {
-				klog.V(2).ErrorS(fmt.Errorf("invalid value in totalNotAllocatedResources"),
-					"totalNotAllocatedResources: <%v>, resreq <%v>",
-					pp.totalNotAllocatedResources.String(), event.Task.Resreq.String())
-			} else {
-				pp.totalNotAllocatedResources.Sub(event.Task.Resreq)
-			}
+			pp.calculateTotalResources()
 
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
 			gpu := pp.totalNotAllocatedResources.Get(api.GPUResourceName)
@@ -439,7 +434,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
-			pp.totalNotAllocatedResources.Add(event.Task.Resreq)
+			pp.calculateTotalResources()
 
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
 			gpu := pp.totalNotAllocatedResources.Get(api.GPUResourceName)
