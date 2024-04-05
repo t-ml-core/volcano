@@ -17,6 +17,7 @@ limitations under the License.
 package proportion
 
 import (
+	"fmt"
 	"math"
 	"reflect"
 
@@ -271,6 +272,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		totalAllocatedResources.Add(attr.allocated)
 	}
 
+	// TODO: this crunch should be replaced with the following logic:
+	// should calculate totalNotAllocatedResources as follows: walk all
+	// allocated tasks and if a node doesn't have gpu resources, add gpu resources from the task
+	// otherwise if node has gpu resources, should subtract resources. Scheduler actions will believe that these
+	// gpus are available and may schedule another task, then it would be panic in the AllocateFunc
 	pp.totalResource.SetMaxResource(totalAllocatedResources)
 
 	pp.totalNotAllocatedResources = pp.totalResource.Clone()
@@ -411,7 +417,14 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
-			pp.totalNotAllocatedResources.Sub(event.Task.Resreq)
+			// TODO: this crunch should be replaced
+			if pp.totalNotAllocatedResources.Less(event.Task.Resreq, api.Zero) {
+				klog.V(2).ErrorS(fmt.Errorf("invalid value in totalNotAllocatedResources"),
+					"totalNotAllocatedResources: <%v>, resreq <%v>",
+					pp.totalNotAllocatedResources.String(), event.Task.Resreq.String())
+			} else {
+				pp.totalNotAllocatedResources.Sub(event.Task.Resreq)
+			}
 
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Get(api.GPUResourceName), attr.allocated.Memory)
 			gpu := pp.totalNotAllocatedResources.Get(api.GPUResourceName)
