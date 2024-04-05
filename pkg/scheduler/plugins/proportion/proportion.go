@@ -266,14 +266,14 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	// We allow execution of preemptable tasks over guaranteed resources,
 	// so we need to understand how many resources are available in a cluster
-	pp.totalNotAllocatedResources = pp.totalResource.Clone()
-
 	totalAllocatedResources := api.EmptyResource()
 	for _, attr := range pp.queueOpts {
 		totalAllocatedResources.Add(attr.allocated)
 	}
 
 	pp.totalResource.SetMaxResource(totalAllocatedResources)
+
+	pp.totalNotAllocatedResources = pp.totalResource.Clone()
 	pp.totalNotAllocatedResources.Sub(totalAllocatedResources)
 
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
