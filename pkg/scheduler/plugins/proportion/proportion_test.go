@@ -112,7 +112,8 @@ type testParams struct {
 
 func paramsToCache(t *testing.T, params testParams) *cache.SchedulerCache {
 	schedulerCache := cache.NewMockSchedulerCache()
-
+	schedulerCache.StatusUpdater = &util.FakeStatusUpdater{}
+	
 	for _, node := range params.nodes {
 		schedulerCache.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
 	}
