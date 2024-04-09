@@ -1,6 +1,11 @@
 name: Code Verify
 
-on: [push]
+on:
+  push:
+    branches:
+      - master
+    tags:
+  pull_request:
 
 jobs:
   verify:
@@ -28,9 +33,9 @@ jobs:
 
       - name: Run verify test
         run: |
-          # make lint
-          # make verify
-          # make TAG=v1.8.2 generate-yaml
-          # make verify-generated-yaml
+          make lint
+          make verify
+          make TAG=v1.8.2 generate-yaml
+          make verify-generated-yaml
           make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
