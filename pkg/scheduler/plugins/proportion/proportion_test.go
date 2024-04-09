@@ -28,8 +28,6 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
@@ -111,34 +109,10 @@ type testParams struct {
 }
 
 func paramsToCache(t *testing.T, params testParams) *cache.SchedulerCache {
-	binder := &util.FakeBinder{
-		Binds:   map[string]string{},
-		Channel: make(chan string),
-	}
-	recorder := record.NewFakeRecorder(100)
-	go func() {
-		for {
-			event := <-recorder.Events
-			t.Logf("%s: [Event] %s", params.name, event)
-		}
-	}()
 	schedulerCache := cache.NewMockSchedulerCache()
-	schedulerCache.Binder = binder
-	schedulerCache.Recorder = recorder
-	// &cache.SchedulerCache{
-	// 	Nodes:           make(map[string]*api.NodeInfo),
-	// 	Jobs:            make(map[api.JobID]*api.JobInfo),
-	// 	PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
-	// 	Queues:          make(map[api.QueueID]*api.QueueInfo),
-	// 	Binder:          binder,
-	// 	StatusUpdater:   &util.FakeStatusUpdater{},
-	// 	VolumeBinder:    &util.FakeVolumeBinder{},
-	// 	Recorder:        recorder,
-	// }
-	schedulerCache.DeletedJobs = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
 	for _, node := range params.nodes {
-		schedulerCache.AddNode(node)
+		schedulerCache.Nodes[node.Name].SetNode(node)
 	}
 	for _, pod := range params.pods {
 		schedulerCache.AddPod(pod)
