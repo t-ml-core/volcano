@@ -174,6 +174,11 @@ func TestProportion(t *testing.T) {
 	})
 	defer patchUpdateQueueStatus.Reset()
 
+	patchUpdateJobStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateJobStatus", func(job *schedulingapi.JobInfo, updatePG bool) (*schedulingapi.JobInfo, error) {
+		return &schedulingapi.JobInfo{PodGroup: &schedulingapi.PodGroup{}}, nil
+	})
+	defer patchUpdateJobStatus.Reset()
+
 	framework.RegisterPluginBuilder(PluginName, New)
 	framework.RegisterPluginBuilder(gang.PluginName, gang.New)
 	framework.RegisterPluginBuilder(priority.PluginName, priority.New)
