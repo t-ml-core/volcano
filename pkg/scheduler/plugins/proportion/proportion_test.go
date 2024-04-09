@@ -114,8 +114,7 @@ func paramsToCache(t *testing.T, params testParams) *cache.SchedulerCache {
 	schedulerCache := cache.NewMockSchedulerCache()
 
 	for _, node := range params.nodes {
-		schedulerCache.Nodes[node.Name] = &schedulingapi.NodeInfo{}
-		schedulerCache.Nodes[node.Name].SetNode(node)
+		schedulerCache.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
 	}
 	for _, pod := range params.pods {
 		schedulerCache.AddPod(pod)
