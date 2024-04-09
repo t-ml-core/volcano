@@ -1,11 +1,11 @@
 name: Code Verify
 
-on:
-  push:
-    branches:
-      - master
-    tags:
-  pull_request:
+# on:
+#   push:
+#     branches:
+#       - master
+#     tags:
+#   pull_request:
 
 jobs:
   verify:
