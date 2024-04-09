@@ -28,7 +28,6 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
@@ -113,7 +112,7 @@ type testParams struct {
 func paramsToCache(t *testing.T, params testParams) *cache.SchedulerCache {
 	schedulerCache := cache.NewMockSchedulerCache()
 	schedulerCache.StatusUpdater = &util.FakeStatusUpdater{}
-	
+
 	for _, node := range params.nodes {
 		schedulerCache.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
 	}
@@ -150,11 +149,6 @@ func TestProportion(t *testing.T) {
 		return nil
 	})
 	defer patchUpdateQueueStatus.Reset()
-
-	patchUpdateJobStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateJobStatus", func(scCache *cache.SchedulerCache, job *schedulingapi.JobInfo, updatePG bool) (*schedulingapi.JobInfo, error) {
-		return &schedulingapi.JobInfo{PodGroup: &schedulingapi.PodGroup{}}, nil
-	})
-	defer patchUpdateJobStatus.Reset()
 
 	framework.RegisterPluginBuilder(PluginName, New)
 	framework.RegisterPluginBuilder(gang.PluginName, gang.New)
