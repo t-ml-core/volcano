@@ -32,6 +32,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
@@ -173,6 +174,11 @@ func TestProportion(t *testing.T) {
 		return nil
 	})
 	defer patchUpdateQueueStatus.Reset()
+
+	patchUpdateJobStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateJobStatus", func(scCache *cache.SchedulerCache, job *schedulingapi.JobInfo, updatePG bool) (*schedulingapi.JobInfo, error) {
+		return &schedulingapi.JobInfo{PodGroup: &schedulingapi.PodGroup{}}, nil
+	})
+	defer patchUpdateJobStatus.Reset()
 
 	framework.RegisterPluginBuilder(PluginName, New)
 	framework.RegisterPluginBuilder(gang.PluginName, gang.New)
