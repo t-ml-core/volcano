@@ -46,6 +46,7 @@ func (shuffle *Action) Initialize() {}
 
 // Execute select evictees according given strategies and evict them.
 func (shuffle *Action) Execute(ssn *framework.Session) {
+	ssn.LastActionName = shuffle.Name()
 	klog.V(5).Infoln("Enter Shuffle ...")
 	defer klog.V(5).Infoln("Leaving Shuffle ...")
 

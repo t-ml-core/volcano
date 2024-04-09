@@ -40,6 +40,7 @@ func (pmpt *Action) Name() string {
 func (pmpt *Action) Initialize() {}
 
 func (pmpt *Action) Execute(ssn *framework.Session) {
+	ssn.LastActionName = pmpt.Name()
 	klog.V(5).Infof("Enter Preempt ...")
 	defer klog.V(5).Infof("Leaving Preempt ...")
 

@@ -541,18 +541,23 @@ func (ji *JobInfo) UpdateStatus(status scheduling.PodGroupPhase) error {
 		return fmt.Errorf("can't set status pg is nil")
 	}
 	ji.PodGroup.Status.Phase = status
-	ji.PodGroup.Status.Reason = ""
+	ji.PodGroup.Status.PendingReason = scheduling.PendingReason{}
 	return nil
 }
 
-func (ji *JobInfo) UpdateStatusReason(reason string) error {
+func (ji *JobInfo) SetPendingReason(action, plugin string, reason scheduling.Reason, message string) error {
 	if ji.PodGroup == nil {
 		return fmt.Errorf("can't set status reason pg is nil")
 	}
-	if ji.PodGroup.Status.Reason != reason {
-		metrics.SetPendingReason(ji.Name, reason)
+	if ji.PodGroup.Status.PendingReason.Reason != reason {
+		metrics.SetPendingReason(ji.Name, string(reason))
 	}
-	ji.PodGroup.Status.Reason = reason
+	ji.PodGroup.Status.PendingReason = scheduling.PendingReason{
+		Action:  action,
+		Plugin:  plugin,
+		Reason:  reason,
+		Message: message,
+	}
 	return nil
 }
 

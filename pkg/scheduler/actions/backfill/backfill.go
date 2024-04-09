@@ -41,6 +41,7 @@ func (backfill *Action) Name() string {
 func (backfill *Action) Initialize() {}
 
 func (backfill *Action) Execute(ssn *framework.Session) {
+	ssn.LastActionName = backfill.Name()
 	klog.V(5).Infof("Enter Backfill ...")
 	defer klog.V(5).Infof("Leaving Backfill ...")
 

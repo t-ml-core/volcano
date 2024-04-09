@@ -431,7 +431,7 @@ func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 	}
 
 	if newPG.Status.Phase != oldPG.Status.Phase ||
-		newPG.Status.Reason != oldPG.Status.Reason {
+		newPG.Status.PendingReason != oldPG.Status.PendingReason {
 		req := apis.Request{
 			Namespace: newPG.Namespace,
 			JobName:   jobNameKey,

@@ -286,7 +286,12 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 
 		// if the status change then reason will be deleted by the updateStatus function
 		if pg.Status.Phase == scheduling.PodGroupInqueue || pg.Status.Phase == scheduling.PodGroupPending {
-			job.Status.State.Reason = pg.Status.Reason
+			job.Status.State.PendingReason = batch.PendingReason{
+				Action:  pg.Status.PendingReason.Action,
+				Plugin:  pg.Status.PendingReason.Plugin,
+				Reason:  batch.Reason(pg.Status.PendingReason.Reason),
+				Message: pg.Status.PendingReason.Message,
+			}
 		}
 		for _, condition := range pg.Status.Conditions {
 			if condition.Type == scheduling.PodGroupUnschedulableType {
@@ -697,7 +702,10 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 					PriorityClassName: job.Spec.PriorityClassName,
 				},
 				Status: scheduling.PodGroupStatus{
-					Reason: "created",
+					PendingReason: scheduling.PendingReason{
+						Action: "controller",
+						Reason: scheduling.JobCreated,
+					},
 				},
 			}
 

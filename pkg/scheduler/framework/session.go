@@ -71,6 +71,7 @@ type Session struct {
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
+	LastActionName string
 
 	plugins           map[string]Plugin
 	eventHandlers     []*EventHandler
@@ -333,6 +334,10 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	}
 
 	return nil
+}
+
+func (ssn *Session) SetJobPendingReason(job *api.JobInfo, plugin string, reason vcv1beta1.Reason, message string) {
+	job.SetPendingReason(ssn.LastActionName, plugin, scheduling.Reason(reason), message)
 }
 
 // Allocate the task to the node in the session

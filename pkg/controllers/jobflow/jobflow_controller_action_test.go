@@ -227,7 +227,6 @@ func TestGetRunningHistoriesFunc(t *testing.T) {
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
 							Phase:              v1alpha1.Completed,
-							Reason:             "",
 							Message:            "",
 							LastTransitionTime: metav1.Time{},
 						},

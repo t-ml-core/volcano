@@ -24,6 +24,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -42,6 +43,7 @@ func (enqueue *Action) Name() string {
 func (enqueue *Action) Initialize() {}
 
 func (enqueue *Action) Execute(ssn *framework.Session) {
+	ssn.LastActionName = enqueue.Name()
 	klog.V(5).Infof("Enter Enqueue ...")
 	defer klog.V(5).Infof("Leaving Enqueue ...")
 
@@ -58,7 +60,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		if queue, found := ssn.Queues[job.Queue]; !found {
 			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
-			job.UpdateStatusReason("can't find job's queue")
+			ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, "can't find job's queue")
 			continue
 		} else if !queueSet.Has(string(queue.UID)) {
 			klog.V(5).Infof("Added Queue <%s> for Job <%s/%s>",

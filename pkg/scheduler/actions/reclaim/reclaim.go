@@ -37,6 +37,7 @@ func (ra *Action) Name() string {
 func (ra *Action) Initialize() {}
 
 func (ra *Action) Execute(ssn *framework.Session) {
+	ssn.LastActionName = ra.Name()
 	klog.V(5).Infof("Enter Reclaim ...")
 	defer klog.V(5).Infof("Leaving Reclaim ...")
 

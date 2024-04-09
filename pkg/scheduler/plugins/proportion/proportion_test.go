@@ -125,16 +125,6 @@ func paramsToCache(t *testing.T, params testParams) *cache.SchedulerCache {
 	schedulerCache := cache.NewMockSchedulerCache()
 	schedulerCache.Binder = binder
 	schedulerCache.Recorder = recorder
-	// &cache.SchedulerCache{
-	// 	Nodes:           make(map[string]*api.NodeInfo),
-	// 	Jobs:            make(map[api.JobID]*api.JobInfo),
-	// 	PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
-	// 	Queues:          make(map[api.QueueID]*api.QueueInfo),
-	// 	Binder:          binder,
-	// 	StatusUpdater:   &util.FakeStatusUpdater{},
-	// 	VolumeBinder:    &util.FakeVolumeBinder{},
-	// 	Recorder:        recorder,
-	// }
 	schedulerCache.DeletedJobs = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
 	for _, node := range params.nodes {
