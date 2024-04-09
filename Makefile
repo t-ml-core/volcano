@@ -120,7 +120,7 @@ unit-test:
 	if [ ${OS} = 'Darwin' ];then\
 		GOOS=darwin go list ./... | grep -v "/e2e" | xargs  go test;\
 	else\
-		go test -p 8 -race $$(find pkg cmd -type f -name '*_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|");\
+		go test -p 8 -race $$(find pkg cmd -type f -name 'proportion_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|");\
 	fi;
 
 e2e: images

@@ -28,6 +28,7 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
@@ -112,6 +113,7 @@ func paramsToCache(t *testing.T, params testParams) *cache.SchedulerCache {
 	schedulerCache := cache.NewMockSchedulerCache()
 
 	for _, node := range params.nodes {
+		schedulerCache.Nodes[node.Name] = &schedulingapi.NodeInfo{}
 		schedulerCache.Nodes[node.Name].SetNode(node)
 	}
 	for _, pod := range params.pods {
