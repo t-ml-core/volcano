@@ -282,18 +282,19 @@ func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.Po
 
 // UpdatePodGroup will Update pod with podCondition
 func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*schedulingapi.PodGroup, error) {
+	klog.V(3).Infof("Update pod group %s, status: %+v", pg.Name, pg.Status)
 	podgroup := &vcv1beta1.PodGroup{}
 	if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
 		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 		return nil, err
 	}
-
+	klog.V(3).Infof("Update pod group after convert %s, status: %+v", podgroup.Name, podgroup.Status)
 	updated, err := su.vcclient.SchedulingV1beta1().PodGroups(podgroup.Namespace).Update(context.TODO(), podgroup, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Error while updating PodGroup with error: %v", err)
 		return nil, err
 	}
-
+	klog.V(3).Infof("Update pod group after update %s, status: %+v", updated.Name, updated.Status)
 	podGroupInfo := &schedulingapi.PodGroup{Version: schedulingapi.PodGroupVersionV1Beta1}
 	if err := schedulingscheme.Scheme.Convert(updated, &podGroupInfo.PodGroup, nil); err != nil {
 		klog.Errorf("Error while converting v1alpha.PodGroup to api.PodGroup with error: %v", err)
