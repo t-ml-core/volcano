@@ -84,7 +84,8 @@ func isPodGroupStatusUpdated(newStatus, oldStatus scheduling.PodGroupStatus) boo
 	oldCondition := oldStatus.Conditions
 	oldStatus.Conditions = nil
 
-	return !reflect.DeepEqual(newStatus, oldStatus) || isPodGroupConditionsUpdated(newCondition, oldCondition)
+	return !reflect.DeepEqual(newStatus, oldStatus) ||
+		!reflect.DeepEqual(newStatus.PendingReason, oldStatus.PendingReason) || isPodGroupConditionsUpdated(newCondition, oldCondition)
 }
 
 // updateJob update specified job
