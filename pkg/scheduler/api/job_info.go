@@ -542,7 +542,7 @@ func (ji *JobInfo) UpdateStatus(status scheduling.PodGroupPhase) error {
 	}
 	ji.PodGroup.Status.Phase = status
 	klog.V(4).Infof("update status job %s: status: %+v", ji.Name, status)
-	// ji.PodGroup.Status.PendingReason = scheduling.PendingReason{}
+	ji.PodGroup.Status.PendingReason = scheduling.PendingReason{}
 	return nil
 }
 
