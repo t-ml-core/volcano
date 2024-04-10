@@ -170,5 +170,5 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.27.2
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.27.2
 	k8s.io/sample-controller => k8s.io/sample-controller v0.27.2
-	volcano.sh/apis => github.com/t-ml-core/apis v1.8.3-0.20240410130146-d735f53f2f8f
+	volcano.sh/apis => github.com/t-ml-core/apis v1.8.3-0.20240410132748-9a3346c9ca93
 )
