@@ -416,6 +416,8 @@ func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 		return
 	}
 
+	klog.V(4).Infof("update pg, name %s, status: %+v",
+				newPG.Name, newPG.Status)
 	jobNameKey := newPG.Name
 	ors := newPG.OwnerReferences
 	for _, or := range ors {
