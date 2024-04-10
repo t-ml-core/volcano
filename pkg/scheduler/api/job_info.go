@@ -541,7 +541,8 @@ func (ji *JobInfo) UpdateStatus(status scheduling.PodGroupPhase) error {
 		return fmt.Errorf("can't set status pg is nil")
 	}
 	ji.PodGroup.Status.Phase = status
-	ji.PodGroup.Status.PendingReason = scheduling.PendingReason{}
+	klog.V(4).Infof("update status job %s: status: %+v", ji.Name, status)
+	// ji.PodGroup.Status.PendingReason = scheduling.PendingReason{}
 	return nil
 }
 
