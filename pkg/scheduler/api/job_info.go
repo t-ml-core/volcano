@@ -546,6 +546,7 @@ func (ji *JobInfo) UpdateStatus(status scheduling.PodGroupPhase) error {
 }
 
 func (ji *JobInfo) SetPendingReason(action, plugin string, reason scheduling.Reason, message string) error {
+	klog.V(4).Infof("set pr to job %s: reason: %s message: %s", ji.Name, reason, message)
 	if ji.PodGroup == nil {
 		return fmt.Errorf("can't set status reason pg is nil")
 	}
