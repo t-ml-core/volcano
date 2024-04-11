@@ -182,8 +182,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			task := tasks.Pop().(*api.TaskInfo)
 
 			if !ssn.Allocatable(queue, task) {
+				// NOTE: the plugin whose allocatable function returned false have to set pending reason
 				klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
-				ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, "queue is overused in allocate")
 				continue
 			}
 
