@@ -825,6 +825,7 @@ func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	}
 
 	job.Status.State.Phase = batch.Pending
+	klog.V(4).Infof("set pending reason created in init to job %s", job.Name)
 	job.Status.State.PendingReason = batch.PendingReason{
 		Reason:  batch.JobCreated,
 		Message: "job initiated in the controller",
