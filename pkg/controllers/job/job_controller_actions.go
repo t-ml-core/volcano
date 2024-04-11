@@ -821,6 +821,7 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 
 func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	if job.Status.State.Phase != "" {
+		klog.V(4).Infof("job status phase is not nil in init to job %s status %s", job.Name, job.Status.State.Phase)
 		return job, nil
 	}
 
