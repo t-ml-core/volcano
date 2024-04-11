@@ -1068,8 +1068,8 @@ github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o
 github.com/stretchr/testify v1.8.3 h1:RP3t2pwF7cMEbC1dqtB6poj3niw/9gnV4Cjg5oW5gtY=
 github.com/stretchr/testify v1.8.3/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635/go.mod h1:hkRG7XYTFWNJGYcbNJQlaLq0fg1yr4J4t/NcTQtrfww=
-github.com/t-ml-core/apis v1.8.3-0.20240410132748-9a3346c9ca93 h1:K9adQDGaB70QanJkpp0q1xQm+NbmEsVFaTr/ez4vr2U=
-github.com/t-ml-core/apis v1.8.3-0.20240410132748-9a3346c9ca93/go.mod h1:h+xbUpkjfRaHjktAi8h+7JNnNahjwhRSgpN9FUUwNXQ=
+github.com/t-ml-core/apis v1.8.3-0.20240411105830-a0c01c8c8162 h1:YOl7jf97gk6WJdkuvYuWrsbSZrtejpvLCtRYqRgA75M=
+github.com/t-ml-core/apis v1.8.3-0.20240411105830-a0c01c8c8162/go.mod h1:h+xbUpkjfRaHjktAi8h+7JNnNahjwhRSgpN9FUUwNXQ=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 h1:6fotK7otjonDflCTK0BCfls4SPy3NcCVb5dqqmbRknE=
 github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 github.com/vishvananda/netlink v1.1.0/go.mod h1:cTgwzPIzzgDAYoQrMm0EdrjRUBkTqKYppBueQtXaqoE=
