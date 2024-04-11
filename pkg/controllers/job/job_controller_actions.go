@@ -825,6 +825,10 @@ func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	}
 
 	job.Status.State.Phase = batch.Pending
+	job.Status.State.PendingReason = batch.PendingReason{
+		Reason:  batch.JobCreated,
+		Message: "job initiated in the controller",
+	}
 	job.Status.State.LastTransitionTime = metav1.Now()
 	job.Status.MinAvailable = job.Spec.MinAvailable
 	jobCondition := newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
