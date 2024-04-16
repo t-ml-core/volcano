@@ -43,7 +43,7 @@ var (
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoNamespace,
 			Name:      "pending_reasons",
-			Help:      "The number of free memory in a cluster",
+			Help:      "Reasons why podgroups are in the pending status",
 		}, []string{"reason"},
 	)
 )
