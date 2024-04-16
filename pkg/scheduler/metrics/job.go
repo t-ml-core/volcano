@@ -60,7 +60,6 @@ func RegisterJobRetries(jobID string) {
 
 func SetPodGroupPendingReason(jobName, reason string) {
 	pendingReasons.WithLabelValues(reason).Inc()
-	klog.V(2).Infof("set pending reason %s to podgroup %s", reason, jobName)
 }
 
 // DeleteJobMetrics delete all metrics related to the job
