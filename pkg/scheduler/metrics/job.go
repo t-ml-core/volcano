@@ -19,7 +19,6 @@ package metrics
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto" // auto-registry collectors in default registry
-	"k8s.io/klog/v2"
 )
 
 var (
@@ -58,7 +57,7 @@ func RegisterJobRetries(jobID string) {
 	jobRetryCount.WithLabelValues(jobID).Inc()
 }
 
-func SetPodGroupPendingReason(jobName, reason string) {
+func SetPodGroupPendingReason(reason string) {
 	pendingReasons.WithLabelValues(reason).Inc()
 }
 

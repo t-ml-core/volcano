@@ -551,7 +551,7 @@ func (ji *JobInfo) SetPendingReason(action, plugin string, reason scheduling.Rea
 		return fmt.Errorf("can't set status reason pg is nil")
 	}
 	if ji.PodGroup.Status.PendingReason.Reason != reason {
-		metrics.SetPodGroupPendingReason(ji.Name, string(reason))
+		metrics.SetPodGroupPendingReason(string(reason))
 		klog.V(2).Infof("set pending reason to podgroup %s: reason: %s message: %s, action: %s, plugin: %s", ji.Name, reason, message, action, plugin)
 	}
 	ji.PodGroup.Status.PendingReason = scheduling.PendingReason{
