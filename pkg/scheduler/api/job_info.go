@@ -552,7 +552,7 @@ func (ji *JobInfo) SetPendingReason(action, plugin string, reason scheduling.Rea
 		return fmt.Errorf("can't set status reason pg is nil")
 	}
 	if ji.PodGroup.Status.PendingReason.Reason != reason {
-		metrics.SetPendingReason(ji.Name, string(reason))
+		metrics.SetPodGroupPendingReason(ji.Name, string(reason))
 	}
 	ji.PodGroup.Status.PendingReason = scheduling.PendingReason{
 		Action:  action,

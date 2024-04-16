@@ -127,14 +127,14 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 
 		queue := queues.Pop().(*api.QueueInfo)
-
-		if ssn.Overused(queue) {
+		overusedRes := ssn.Overused(queue)
+		if overusedRes.IsOverused {
 			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
 			jobs := jobsMap[queue.UID]
 
 			for !jobs.Empty() {
 				job := jobs.Pop().(*api.JobInfo)
-				ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, "job's queue is overused")
+				ssn.SetJobPendingReason(job, overusedRes.Plugin, overusedRes.Reason, overusedRes.Message)
 			}
 
 			continue

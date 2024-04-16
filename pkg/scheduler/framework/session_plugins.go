@@ -100,7 +100,7 @@ func (ssn *Session) AddNodeReduceFn(name string, pf api.NodeReduceFn) {
 }
 
 // AddOverusedFn add overused function
-func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
+func (ssn *Session) AddOverusedFn(name string, fn api.OverusedFn) {
 	ssn.overusedFns[name] = fn
 }
 
@@ -247,7 +247,7 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 }
 
 // Overused invoke overused function of the plugins
-func (ssn *Session) Overused(queue *api.QueueInfo) bool {
+func (ssn *Session) Overused(queue *api.QueueInfo) api.OverusedResult {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledOverused) {
@@ -257,13 +257,17 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 			if !found {
 				continue
 			}
-			if of(queue) {
-				return true
+			res := of(queue)
+			if res.IsOverused {
+				res.Plugin = plugin.Name
+				return res
 			}
 		}
 	}
 
-	return false
+	return api.OverusedResult{
+		IsOverused: false,
+	}
 }
 
 // Allocatable invoke allocatable function of the plugins

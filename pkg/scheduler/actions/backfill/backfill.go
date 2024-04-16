@@ -22,6 +22,7 @@ import (
 
 	"k8s.io/klog/v2"
 
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -84,12 +85,14 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 						fe.SetNodeError(ni.Name, err)
 					}
 					job.NodesFitErrors[task.UID] = fe
+					ssn.SetJobPendingReason(job, "", vcv1beta1.NodeFitError, "PrePredicate failed")
 					break
 				}
 
 				predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicatFunc, true)
 				if len(predicateNodes) == 0 {
 					job.NodesFitErrors[task.UID] = fitErrors
+					ssn.SetJobPendingReason(job, "", vcv1beta1.NodeFitError, "PredicateNodes failed")
 					break
 				}
 
@@ -106,6 +109,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 				if err := ssn.Allocate(task, node); err != nil {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
 					fe.SetNodeError(node.Name, err)
+					ssn.SetJobPendingReason(job, "", vcv1beta1.NodeFitError, "can't allocate resources on the node")
 					continue
 				}
 

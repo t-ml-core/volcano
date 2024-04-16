@@ -19,6 +19,7 @@ package metrics
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto" // auto-registry collectors in default registry
+	"k8s.io/klog/v2"
 )
 
 var (
@@ -43,7 +44,7 @@ var (
 			Subsystem: VolcanoNamespace,
 			Name:      "pending_reasons",
 			Help:      "The number of free memory in a cluster",
-		}, []string{"jobName", "reason"},
+		}, []string{"reason"},
 	)
 )
 
@@ -57,8 +58,9 @@ func RegisterJobRetries(jobID string) {
 	jobRetryCount.WithLabelValues(jobID).Inc()
 }
 
-func SetPendingReason(jobName, reason string) {
-	pendingReasons.WithLabelValues(jobName, reason).Inc()
+func SetPodGroupPendingReason(jobName, reason string) {
+	pendingReasons.WithLabelValues(reason).Inc()
+	klog.V(2).Infof("set pending reason %s to podgroup %s", reason, jobName)
 }
 
 // DeleteJobMetrics delete all metrics related to the job

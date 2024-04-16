@@ -25,6 +25,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 type Action struct{}
@@ -305,6 +306,12 @@ func preempt(
 				continue
 			}
 			preempted.Add(preemptee.Resreq)
+			preemptedJob, exist := ssn.Jobs[preemptee.Job]
+			if !exist {
+				klog.Errorf("can't find job by task, jobId: %s", preemptee.Job)
+				continue
+			}
+			ssn.SetJobPendingReason(preemptedJob, "", vcv1beta1.JobPreempted, fmt.Sprintf("job was preempted by job: %s", job.Name))
 		}
 
 		metrics.RegisterPreemptionAttempts()

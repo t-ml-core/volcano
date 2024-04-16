@@ -18,6 +18,7 @@ package api
 
 import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 // TaskStatus defines the status of a task/pod.
@@ -117,11 +118,22 @@ type CompareFn func(interface{}, interface{}) int
 // ValidateFn is the func declaration used to check object's status.
 type ValidateFn func(interface{}) bool
 
+// OverusedFn is the func that checks is queue overused
+type OverusedFn func(interface{}) OverusedResult
+
 // ValidateResult is struct to which can used to determine the result
 type ValidateResult struct {
 	Pass    bool
 	Reason  string
 	Message string
+}
+
+// ValidateResult is struct that contains information about is the queue is overused
+type OverusedResult struct {
+	IsOverused bool
+	Reason     vcv1beta1.Reason
+	Message    string
+	Plugin     string
 }
 
 // These are predefined codes used in a Status.
