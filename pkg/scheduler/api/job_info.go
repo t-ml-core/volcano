@@ -542,19 +542,22 @@ func (ji *JobInfo) UpdateStatus(status scheduling.PodGroupPhase) error {
 	}
 	ji.PodGroup.Status.Phase = status
 	klog.V(4).Infof("update status job %s: status: %+v", ji.Name, status)
-	ji.PodGroup.Status.PendingReason = scheduling.PendingReason{}
+	if ji.PodGroup != nil && ji.PodGroup.Status.PendingReasonInfo.Reason != "" {
+		metrics.DecreasePodGroupPendingReason(string(ji.PodGroup.Status.PendingReasonInfo.Reason))
+	}
+	ji.PodGroup.Status.PendingReasonInfo = scheduling.PendingReasonInfo{}
 	return nil
 }
 
-func (ji *JobInfo) SetPendingReason(action, plugin string, reason scheduling.Reason, message string) error {
+func (ji *JobInfo) SetPendingReason(action, plugin string, reason scheduling.PendingReason, message string) error {
 	if ji.PodGroup == nil {
 		return fmt.Errorf("can't set status reason pg is nil")
 	}
-	if ji.PodGroup.Status.PendingReason.Reason != reason {
-		metrics.SetPodGroupPendingReason(string(reason))
+	if ji.PodGroup.Status.PendingReasonInfo.Reason != reason {
+		metrics.IncreasePodGroupPendingReason(string(reason))
 		klog.V(2).Infof("set pending reason to podgroup %s: reason: %s message: %s, action: %s, plugin: %s", ji.Name, reason, message, action, plugin)
 	}
-	ji.PodGroup.Status.PendingReason = scheduling.PendingReason{
+	ji.PodGroup.Status.PendingReasonInfo = scheduling.PendingReasonInfo{
 		Action:  action,
 		Plugin:  plugin,
 		Reason:  reason,

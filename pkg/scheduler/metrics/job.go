@@ -57,8 +57,12 @@ func RegisterJobRetries(jobID string) {
 	jobRetryCount.WithLabelValues(jobID).Inc()
 }
 
-func SetPodGroupPendingReason(reason string) {
+func IncreasePodGroupPendingReason(reason string) {
 	pendingReasons.WithLabelValues(reason).Inc()
+}
+
+func DecreasePodGroupPendingReason(reason string) {
+	pendingReasons.WithLabelValues(reason).Dec()
 }
 
 // DeleteJobMetrics delete all metrics related to the job

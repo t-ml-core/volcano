@@ -336,8 +336,8 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	return nil
 }
 
-func (ssn *Session) SetJobPendingReason(job *api.JobInfo, plugin string, reason vcv1beta1.Reason, message string) {
-	job.SetPendingReason(ssn.LastActionName, plugin, scheduling.Reason(reason), message)
+func (ssn *Session) SetJobPendingReason(job *api.JobInfo, plugin string, reason vcv1beta1.PendingReason, message string) {
+	job.SetPendingReason(ssn.LastActionName, plugin, scheduling.PendingReason(reason), message)
 }
 
 // Allocate the task to the node in the session

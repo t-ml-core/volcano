@@ -131,7 +131,7 @@ type ValidateResult struct {
 // ValidateResult is struct that contains information about is the queue is overused
 type OverusedResult struct {
 	IsOverused bool
-	Reason     vcv1beta1.Reason
+	Reason     vcv1beta1.PendingReason
 	Message    string
 	Plugin     string
 }

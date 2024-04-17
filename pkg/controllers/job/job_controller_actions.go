@@ -286,11 +286,11 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 
 		// if the status change then reason will be deleted by the updateStatus function
 		if pg.Status.Phase == scheduling.PodGroupInqueue || pg.Status.Phase == scheduling.PodGroupPending {
-			job.Status.State.PendingReason = batch.PendingReason{
-				Action:  pg.Status.PendingReason.Action,
-				Plugin:  pg.Status.PendingReason.Plugin,
-				Reason:  batch.Reason(pg.Status.PendingReason.Reason),
-				Message: pg.Status.PendingReason.Message,
+			job.Status.State.PendingReasonInfo = batch.PendingReasonInfo{
+				Action:  pg.Status.PendingReasonInfo.Action,
+				Plugin:  pg.Status.PendingReasonInfo.Plugin,
+				Reason:  batch.PendingReason(pg.Status.PendingReasonInfo.Reason),
+				Message: pg.Status.PendingReasonInfo.Message,
 			}
 		}
 		for _, condition := range pg.Status.Conditions {
@@ -702,9 +702,9 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 					PriorityClassName: job.Spec.PriorityClassName,
 				},
 				Status: scheduling.PodGroupStatus{
-					PendingReason: scheduling.PendingReason{
+					PendingReasonInfo: scheduling.PendingReasonInfo{
 						Action: "controller",
-						Reason: scheduling.JobCreated,
+						Reason: scheduling.NotProcessedByScheduler,
 					},
 				},
 			}
@@ -827,8 +827,8 @@ func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 
 	job.Status.State.Phase = batch.Pending
 	klog.V(4).Infof("set pending reason created in init to job %s", job.Name)
-	job.Status.State.PendingReason = batch.PendingReason{
-		Reason:  batch.JobCreated,
+	job.Status.State.PendingReasonInfo = batch.PendingReasonInfo{
+		Reason:  batch.NotProcessedByScheduler,
 		Message: "job initiated in the controller",
 	}
 	job.Status.State.LastTransitionTime = metav1.Now()
