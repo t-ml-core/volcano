@@ -61,10 +61,6 @@ func IncreasePodGroupPendingReason(reason string) {
 	pendingReasons.WithLabelValues(reason).Inc()
 }
 
-func DecreasePodGroupPendingReason(reason string) {
-	pendingReasons.WithLabelValues(reason).Dec()
-}
-
 // DeleteJobMetrics delete all metrics related to the job
 func DeleteJobMetrics(jobName, queue, namespace string) {
 	e2eJobSchedulingDuration.DeleteLabelValues(jobName, queue, namespace)
