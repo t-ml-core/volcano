@@ -19,13 +19,14 @@ package volumebinding
 import (
 	"context"
 	"fmt"
-	storagev1beta1 "k8s.io/api/storage/v1beta1"
-	storageinformersv1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 	"os"
 	"reflect"
 	"sort"
 	"testing"
 	"time"
+
+	storagev1beta1 "k8s.io/api/storage/v1beta1"
+	storageinformersv1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 
 	"github.com/google/go-cmp/cmp"
 
