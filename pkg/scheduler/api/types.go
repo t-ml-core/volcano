@@ -118,7 +118,7 @@ type CompareFn func(interface{}, interface{}) int
 type ValidateFn func(interface{}) bool
 
 // OverusedFn is the func that checks is queue overused
-type OverusedFn func(interface{}) (bool, OverusedInfo)
+type OverusedFn func(interface{}) (bool, *OverusedInfo)
 
 // ValidateResult is a struct to which can used to determine the result
 type ValidateResult struct {

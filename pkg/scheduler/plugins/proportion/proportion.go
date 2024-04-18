@@ -313,14 +313,15 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, util.Permit
 	})
 
-	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) (bool, api.OverusedInfo) {
+	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) (bool, *api.OverusedInfo) {
 		queue := obj.(*api.QueueInfo)
 		attr := pp.queueOpts[queue.UID]
 
 		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
 		metrics.UpdateQueueOverused(attr.name, overused)
-		res := api.OverusedInfo{}
+		var res *api.OverusedInfo
 		if overused {
+			res = &api.OverusedInfo{}
 			res.Reason = string(vcv1beta1.NotEnoughResourcesInCluster)
 			res.Message = "deserved is less than allocated"
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
