@@ -21,11 +21,11 @@ import (
 
 	"k8s.io/klog/v2"
 
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
-	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 const VolcanoForbidPreemptFromOtherProjectsAnnotation = "volcano.sh/forbid-preempt-from-other-projects"
