@@ -28,6 +28,8 @@ import (
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
+const VolcanoForbidPreemptFromOtherProjectsAnnotation = "volcano.sh/forbid-preempt-from-other-projects"
+
 type Action struct{}
 
 func New() *Action {
@@ -133,7 +135,10 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					}
 
 					if !preemptor.Preemptable {
-						return preemptor.Job != task.Job
+						val, ok := task.Pod.Annotations[VolcanoForbidPreemptFromOtherProjectsAnnotation]
+						if !ok || val != "true" {
+							return preemptor.Job != task.Job
+						}
 					}
 
 					return job.Queue == preemptorJob.Queue && preemptor.Job != task.Job

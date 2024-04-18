@@ -1354,6 +1354,9 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 // UpdateJobStatus update the status of job and its tasks.
 func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG bool) (*schedulingapi.JobInfo, error) {
 	if updatePG {
+		klog.V(3).Infof("Update pod group <%s/%s>, job=<%s>, queue=<%s>, phase=<%s>",
+			job.PodGroup.Name, job.PodGroup.Namespace, job.Name, job.PodGroup.Spec.Queue, job.PodGroup.Status.Phase)
+
 		pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
 		if err != nil {
 			return nil, err
