@@ -247,7 +247,7 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 }
 
 // Overused invoke overused function of the plugins
-func (ssn *Session) Overused(queue *api.QueueInfo) api.OverusedResult {
+func (ssn *Session) Overused(queue *api.QueueInfo) (bool, api.OverusedInfo) {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledOverused) {
@@ -257,17 +257,15 @@ func (ssn *Session) Overused(queue *api.QueueInfo) api.OverusedResult {
 			if !found {
 				continue
 			}
-			res := of(queue)
-			if res.IsOverused {
+			ok, res := of(queue)
+			if ok {
 				res.Plugin = plugin.Name
-				return res
+				return ok, res
 			}
 		}
 	}
 
-	return api.OverusedResult{
-		IsOverused: false,
-	}
+	return false, api.OverusedInfo{}
 }
 
 // Allocatable invoke allocatable function of the plugins

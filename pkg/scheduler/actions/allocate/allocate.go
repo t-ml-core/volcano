@@ -127,14 +127,14 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 
 		queue := queues.Pop().(*api.QueueInfo)
-		overusedRes := ssn.Overused(queue)
-		if overusedRes.IsOverused {
+		isOverused, info := ssn.Overused(queue)
+		if isOverused {
 			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
 			jobs := jobsMap[queue.UID]
 
 			for !jobs.Empty() {
 				job := jobs.Pop().(*api.JobInfo)
-				ssn.SetJobPendingReason(job, overusedRes.Plugin, overusedRes.Reason, overusedRes.Message)
+				ssn.SetJobPendingReason(job, info.Plugin, vcv1beta1.PendingReason(info.Reason), info.Message)
 			}
 
 			continue
@@ -196,7 +196,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					fitErrors.SetNodeError(ni.Name, err)
 				}
 				job.NodesFitErrors[task.UID] = fitErrors
-				ssn.SetJobPendingReason(job, "", vcv1beta1.NodeFitError, fmt.Sprint("can't fit job to node: %v", fitErrors))
+				ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, fmt.Sprint("can't fit job to node: %v", fitErrors))
 				break
 			}
 
@@ -262,7 +262,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if err := stmt.Allocate(task, bestNode); err != nil {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 						task.UID, bestNode.Name, ssn.UID, err)
-					ssn.SetJobPendingReason(job, "", vcv1beta1.NodeFitError, fmt.Sprintf("failed to bind Task on the node: %v", err))
+					ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, fmt.Sprintf("failed to bind Task on the node: %v", err))
 				} else {
 					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
