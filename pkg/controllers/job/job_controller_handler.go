@@ -416,6 +416,8 @@ func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 		return
 	}
 
+	klog.V(4).Infof("update pod group, pod group name is: %s, status: %+v",
+		newPG.Name, newPG.Status)
 	jobNameKey := newPG.Name
 	ors := newPG.OwnerReferences
 	for _, or := range ors {
@@ -430,7 +432,8 @@ func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 			"Failed to find job in cache by PodGroup(%s/%s), this may not be a PodGroup for volcano job.", newPG.Namespace, newPG.Name)
 	}
 
-	if newPG.Status.Phase != oldPG.Status.Phase {
+	if newPG.Status.Phase != oldPG.Status.Phase ||
+		newPG.Status.PendingReasonInfo != oldPG.Status.PendingReasonInfo {
 		req := apis.Request{
 			Namespace: newPG.Namespace,
 			JobName:   jobNameKey,

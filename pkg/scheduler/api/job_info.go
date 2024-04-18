@@ -35,6 +35,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 // DisruptionBudget define job min pod available and max pod unvailable value
@@ -532,6 +533,33 @@ func (ji *JobInfo) UpdateTaskStatus(task *TaskInfo, status TaskStatus) error {
 	task.Status = status
 	ji.AddTaskInfo(task)
 
+	return nil
+}
+
+func (ji *JobInfo) UpdateStatus(status scheduling.PodGroupPhase) error {
+	if ji.PodGroup == nil {
+		return fmt.Errorf("can't set status pg is nil")
+	}
+	ji.PodGroup.Status.Phase = status
+	klog.V(4).Infof("update status job %s: status: %+v", ji.Name, status)
+	ji.PodGroup.Status.PendingReasonInfo = scheduling.PendingReasonInfo{}
+	return nil
+}
+
+func (ji *JobInfo) SetPendingReason(action, plugin string, reason scheduling.PendingReason, message string) error {
+	if ji.PodGroup == nil {
+		return fmt.Errorf("can't set status reason pg is nil")
+	}
+	if ji.PodGroup.Status.PendingReasonInfo.Reason != reason {
+		metrics.IncreasePodGroupPendingReason(string(reason))
+		klog.V(2).Infof("set pending reason to podgroup %s: reason: %s message: %s, action: %s, plugin: %s", ji.Name, reason, message, action, plugin)
+	}
+	ji.PodGroup.Status.PendingReasonInfo = scheduling.PendingReasonInfo{
+		Action:  action,
+		Plugin:  plugin,
+		Reason:  reason,
+		Message: message,
+	}
 	return nil
 }
 

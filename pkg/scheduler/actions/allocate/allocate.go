@@ -17,11 +17,13 @@
 package allocate
 
 import (
+	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -42,6 +44,7 @@ func (alloc *Action) Name() string {
 func (alloc *Action) Initialize() {}
 
 func (alloc *Action) Execute(ssn *framework.Session) {
+	ssn.LastActionName = alloc.Name()
 	klog.V(5).Infof("Enter Allocate ...")
 	defer klog.V(5).Infof("Leaving Allocate ...")
 
@@ -68,7 +71,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		} else if job.IsPending() {
 			klog.V(4).Infof("Job <%s/%s> Queue <%s> status update from pending to inqueue, reason: no enqueue action is configured.",
 				job.Namespace, job.Name, job.Queue)
-			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
+			job.UpdateStatus(scheduling.PodGroupInqueue)
 		}
 
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
@@ -79,6 +82,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		if _, found := ssn.Queues[job.Queue]; !found {
 			klog.Warningf("Skip adding Job <%s/%s> because its queue %s is not found",
 				job.Namespace, job.Name, job.Queue)
+			ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, "can't find job's queue")
 			continue
 		}
 
@@ -123,9 +127,16 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 
 		queue := queues.Pop().(*api.QueueInfo)
-
-		if ssn.Overused(queue) {
+		isOverused, info := ssn.Overused(queue)
+		if isOverused {
 			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
+			jobs := jobsMap[queue.UID]
+
+			for !jobs.Empty() {
+				job := jobs.Pop().(*api.JobInfo)
+				ssn.SetJobPendingReason(job, info.Plugin, vcv1beta1.PendingReason(info.Reason), info.Message)
+			}
+
 			continue
 		}
 
@@ -145,6 +156,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if task.Resreq.IsEmpty() {
 					klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
 						task.Namespace, task.Name)
+					ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, "resreq is empty")
 					continue
 				}
 
@@ -170,6 +182,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			task := tasks.Pop().(*api.TaskInfo)
 
 			if !ssn.Allocatable(queue, task) {
+				// NOTE: the plugin whose allocatable function returned false have to set pending reason
 				klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
 				continue
 			}
@@ -183,12 +196,14 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					fitErrors.SetNodeError(ni.Name, err)
 				}
 				job.NodesFitErrors[task.UID] = fitErrors
+				ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, fmt.Sprintf("can't fit job to node: %v", fitErrors))
 				break
 			}
 
 			predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, predicateFn, true)
 			if len(predicateNodes) == 0 {
 				job.NodesFitErrors[task.UID] = fitErrors
+				ssn.SetJobPendingReason(job, "", vcv1beta1.NotEnoughResourcesInCluster, "can't find node for the task")
 				break
 			}
 
@@ -247,6 +262,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if err := stmt.Allocate(task, bestNode); err != nil {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 						task.UID, bestNode.Name, ssn.UID, err)
+					ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, fmt.Sprintf("failed to bind Task on the node: %v", err))
 				} else {
 					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())

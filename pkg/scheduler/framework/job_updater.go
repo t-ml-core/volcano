@@ -84,7 +84,8 @@ func isPodGroupStatusUpdated(newStatus, oldStatus scheduling.PodGroupStatus) boo
 	oldCondition := oldStatus.Conditions
 	oldStatus.Conditions = nil
 
-	return !reflect.DeepEqual(newStatus, oldStatus) || isPodGroupConditionsUpdated(newCondition, oldCondition)
+	return !reflect.DeepEqual(newStatus, oldStatus) ||
+		!reflect.DeepEqual(newStatus.PendingReasonInfo, oldStatus.PendingReasonInfo) || isPodGroupConditionsUpdated(newCondition, oldCondition)
 }
 
 // updateJob update specified job
@@ -92,9 +93,12 @@ func (ju *jobUpdater) updateJob(index int) {
 	job := ju.jobQueue[index]
 	ssn := ju.ssn
 
+	klog.V(4).Infof("update job at the end of the session. job: %s, status: %+v", job.Name, job.PodGroup.Status.PendingReasonInfo)
 	job.PodGroup.Status = jobStatus(ssn, job)
+	klog.V(4).Infof("update job at the end of the session after status. job: %s, status: %+v", job.Name, job.PodGroup.Status.PendingReasonInfo)
 	oldStatus, found := ssn.podGroupStatus[job.UID]
 	updatePG := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
+	klog.V(4).Infof("update job at the end of the session update: %v. job: %s, status: %+v", updatePG, job.Name, job.PodGroup.Status.PendingReasonInfo)
 	if _, err := ssn.cache.UpdateJobStatus(job, updatePG); err != nil {
 		klog.Errorf("Failed to update job <%s/%s>: %v",
 			job.Namespace, job.Name, err)

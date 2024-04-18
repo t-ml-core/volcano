@@ -117,11 +117,21 @@ type CompareFn func(interface{}, interface{}) int
 // ValidateFn is the func declaration used to check object's status.
 type ValidateFn func(interface{}) bool
 
-// ValidateResult is struct to which can used to determine the result
+// OverusedFn is the func that checks is queue overused
+type OverusedFn func(interface{}) (bool, *OverusedInfo)
+
+// ValidateResult is a struct to which can used to determine the result
 type ValidateResult struct {
 	Pass    bool
 	Reason  string
 	Message string
+}
+
+// OverusedInfo is a struct that contains information about whether the queue is overused
+type OverusedInfo struct {
+	Reason  string
+	Message string
+	Plugin  string
 }
 
 // These are predefined codes used in a Status.

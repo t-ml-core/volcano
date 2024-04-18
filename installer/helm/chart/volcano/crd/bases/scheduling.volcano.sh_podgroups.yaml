@@ -132,6 +132,24 @@ spec:
                 description: The number of pods which reached phase Failed.
                 format: int32
                 type: integer
+              pendingReasonInfo:
+                description: The reason why pod is in the pending state Presents if
+                  the pod is in the pending state
+                properties:
+                  action:
+                    description: Name of the action that rejected the pg
+                    type: string
+                  message:
+                    description: Human readable message with detailed description
+                      why this Reason was set
+                    type: string
+                  plugin:
+                    description: Name of the plugin that rejected the pg
+                    type: string
+                  reason:
+                    description: Reason why plugin/action decided to reject the pg
+                    type: string
+                type: object
               phase:
                 description: Current phase of PodGroup.
                 type: string

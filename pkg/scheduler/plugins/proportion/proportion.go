@@ -20,10 +20,12 @@ import (
 	"math"
 	"reflect"
 
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
+	v1 "k8s.io/api/core/v1"
+
 	"volcano.sh/apis/pkg/apis/scheduling"
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -326,18 +328,22 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, util.Permit
 	})
 
-	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) bool {
+	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) (bool, *api.OverusedInfo) {
 		queue := obj.(*api.QueueInfo)
 		attr := pp.queueOpts[queue.UID]
 
 		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
 		metrics.UpdateQueueOverused(attr.name, overused)
+		var res *api.OverusedInfo
 		if overused {
+			res = &api.OverusedInfo{}
+			res.Reason = string(vcv1beta1.NotEnoughResourcesInCluster)
+			res.Message = "deserved is less than allocated"
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)
 		}
 
-		return overused
+		return overused, res
 	})
 
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
@@ -361,6 +367,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
+			ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.NotEnoughResourcesInCluster, "resreq is greater than deserved")
 		}
 
 		return allocatable
@@ -410,6 +417,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Permit
 		}
 		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
+		ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.InternalError, "queue resource quota insufficient")
 		return util.Reject
 	})
 

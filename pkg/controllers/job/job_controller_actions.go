@@ -284,6 +284,15 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			syncTask = true
 		}
 
+		// if the status change then reason will be deleted by the updateStatus function
+		if pg.Status.Phase == scheduling.PodGroupInqueue || pg.Status.Phase == scheduling.PodGroupPending {
+			job.Status.State.PendingReasonInfo = batch.PendingReasonInfo{
+				Action:  pg.Status.PendingReasonInfo.Action,
+				Plugin:  pg.Status.PendingReasonInfo.Plugin,
+				Reason:  batch.PendingReason(pg.Status.PendingReasonInfo.Reason),
+				Message: pg.Status.PendingReasonInfo.Message,
+			}
+		}
 		for _, condition := range pg.Status.Conditions {
 			if condition.Type == scheduling.PodGroupUnschedulableType {
 				cc.recorder.Eventf(job, v1.EventTypeWarning, string(batch.PodGroupPending),
@@ -692,6 +701,12 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 					MinResources:      cc.calcPGMinResources(job),
 					PriorityClassName: job.Spec.PriorityClassName,
 				},
+				Status: scheduling.PodGroupStatus{
+					PendingReasonInfo: scheduling.PendingReasonInfo{
+						Action: "controller",
+						Reason: scheduling.NotProcessedByScheduler,
+					},
+				},
 			}
 
 			if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
@@ -806,10 +821,15 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 
 func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	if job.Status.State.Phase != "" {
+		klog.V(4).Infof("job status phase is not nil in init to job %s status %s", job.Name, job.Status.State.Phase)
 		return job, nil
 	}
 
 	job.Status.State.Phase = batch.Pending
+	job.Status.State.PendingReasonInfo = batch.PendingReasonInfo{
+		Reason:  batch.NotProcessedByScheduler,
+		Message: "job initiated in the controller",
+	}
 	job.Status.State.LastTransitionTime = metav1.Now()
 	job.Status.MinAvailable = job.Spec.MinAvailable
 	jobCondition := newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)

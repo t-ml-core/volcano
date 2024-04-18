@@ -37,6 +37,14 @@ var (
 			Help:      "Number of retry counts for one job",
 		}, []string{"job_id"},
 	)
+
+	pendingReasons = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "pending_reasons",
+			Help:      "Reasons why podgroups are in the pending status",
+		}, []string{"reason"},
+	)
 )
 
 // UpdateJobShare records share for one job
@@ -47,6 +55,10 @@ func UpdateJobShare(jobNs, jobID string, share float64) {
 // RegisterJobRetries total number of job retries.
 func RegisterJobRetries(jobID string) {
 	jobRetryCount.WithLabelValues(jobID).Inc()
+}
+
+func IncreasePodGroupPendingReason(reason string) {
+	pendingReasons.WithLabelValues(reason).Inc()
 }
 
 // DeleteJobMetrics delete all metrics related to the job

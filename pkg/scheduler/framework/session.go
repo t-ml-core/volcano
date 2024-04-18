@@ -71,6 +71,7 @@ type Session struct {
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
+	LastActionName string
 
 	plugins           map[string]Plugin
 	eventHandlers     []*EventHandler
@@ -87,7 +88,7 @@ type Session struct {
 	nodeReduceFns     map[string]api.NodeReduceFn
 	preemptableFns    map[string]api.EvictableFn
 	reclaimableFns    map[string]api.EvictableFn
-	overusedFns       map[string]api.ValidateFn
+	overusedFns       map[string]api.OverusedFn
 	allocatableFns    map[string]api.AllocatableFn
 	jobReadyFns       map[string]api.ValidateFn
 	jobPipelinedFns   map[string]api.VoteFn
@@ -132,7 +133,7 @@ func openSession(cache cache.Cache) *Session {
 		nodeReduceFns:     map[string]api.NodeReduceFn{},
 		preemptableFns:    map[string]api.EvictableFn{},
 		reclaimableFns:    map[string]api.EvictableFn{},
-		overusedFns:       map[string]api.ValidateFn{},
+		overusedFns:       map[string]api.OverusedFn{},
 		allocatableFns:    map[string]api.AllocatableFn{},
 		jobReadyFns:       map[string]api.ValidateFn{},
 		jobPipelinedFns:   map[string]api.VoteFn{},
@@ -333,6 +334,10 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	}
 
 	return nil
+}
+
+func (ssn *Session) SetJobPendingReason(job *api.JobInfo, plugin string, reason vcv1beta1.PendingReason, message string) {
+	job.SetPendingReason(ssn.LastActionName, plugin, scheduling.PendingReason(reason), message)
 }
 
 // Allocate the task to the node in the session

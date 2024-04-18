@@ -37,6 +37,7 @@ func (ra *Action) Name() string {
 func (ra *Action) Initialize() {}
 
 func (ra *Action) Execute(ssn *framework.Session) {
+	ssn.LastActionName = ra.Name()
 	klog.V(5).Infof("Enter Reclaim ...")
 	defer klog.V(5).Infof("Leaving Reclaim ...")
 
@@ -91,7 +92,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		var task *api.TaskInfo
 
 		queue := queues.Pop().(*api.QueueInfo)
-		if ssn.Overused(queue) {
+		if overused, _ := ssn.Overused(queue); overused {
 			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
 			continue
 		}
