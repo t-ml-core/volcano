@@ -196,7 +196,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					fitErrors.SetNodeError(ni.Name, err)
 				}
 				job.NodesFitErrors[task.UID] = fitErrors
-				ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, fmt.Sprint("can't fit job to node: %v", fitErrors))
+				ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, fmt.Sprintf("can't fit job to node: %v", fitErrors))
 				break
 			}
 
