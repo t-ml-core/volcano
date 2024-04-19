@@ -36,6 +36,7 @@ type ControllerOption struct {
 	WorkerThreadsForPG      uint32
 
 	CommandQueueRateLimierFactory func() workqueue.RateLimiter
+	WorkerQueueRateLimiterFactory func() workqueue.RateLimiter
 }
 
 // Controller is the interface of all controllers.

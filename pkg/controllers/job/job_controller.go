@@ -233,8 +233,11 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	if opt.CommandQueueRateLimierFactory != nil {
 		cc.commandQueue = workqueue.NewRateLimitingQueue(opt.CommandQueueRateLimierFactory())
-		for iw := uint32(0); iw < workers; i++ {
-			cc.queueList[iw] = workqueue.NewRateLimitingQueue(opt.CommandQueueRateLimierFactory())
+	}
+
+	if opt.WorkerQueueRateLimiterFactory != nil {
+		for iw := uint32(0); iw < workers; iw++ {
+			cc.queueList[iw] = workqueue.NewRateLimitingQueue(opt.WorkerQueueRateLimiterFactory())
 		}
 	}
 

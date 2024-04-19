@@ -136,6 +136,14 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 		)
 	}
 
+	controllerOpt.WorkerQueueRateLimiterFactory = func() workqueue.RateLimiter {
+		return workqueue.NewMaxOfRateLimiter(
+			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 60*time.Second),
+			// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
+			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+		)
+	}
+
 	return func(ctx context.Context) {
 		framework.ForeachController(func(c framework.Controller) {
 			if err := c.Initialize(controllerOpt); err != nil {
