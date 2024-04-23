@@ -1323,7 +1323,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 
 	// If pending or unschedulable, record unschedulable event.
 	if pgUnschedulable {
-		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
+		msg := fmt.Sprintf("%v/%v tasks were not schedulled: %v",
 			len(job.TaskStatusIndex[schedulingapi.Pending]),
 			len(job.Tasks),
 			job.FitError())
