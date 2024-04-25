@@ -231,6 +231,16 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	state.SyncJob = cc.syncJob
 	state.KillJob = cc.killJob
 
+	if opt.CommandQueueRateLimierFactory != nil {
+		cc.commandQueue = workqueue.NewRateLimitingQueue(opt.CommandQueueRateLimierFactory())
+	}
+
+	if opt.WorkerQueueRateLimiterFactory != nil {
+		for iw := uint32(0); iw < workers; iw++ {
+			cc.queueList[iw] = workqueue.NewRateLimitingQueue(opt.WorkerQueueRateLimiterFactory())
+		}
+	}
+
 	return nil
 }
 

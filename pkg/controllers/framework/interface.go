@@ -19,6 +19,7 @@ package framework
 import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/workqueue"
 
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 )
@@ -34,6 +35,9 @@ type ControllerOption struct {
 
 	InheritOwnerAnnotations bool
 	WorkerThreadsForPG      uint32
+
+	CommandQueueRateLimierFactory func() workqueue.RateLimiter
+	WorkerQueueRateLimiterFactory func() workqueue.RateLimiter
 }
 
 // Controller is the interface of all controllers.
