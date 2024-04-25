@@ -22,7 +22,6 @@ import (
 	"os"
 	"time"
 
-	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
@@ -129,19 +128,11 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.WorkerThreadsForPG = opt.WorkerThreadsForPG
 
 	controllerOpt.CommandQueueRateLimierFactory = func() workqueue.RateLimiter {
-		return workqueue.NewMaxOfRateLimiter(
-			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 60*time.Second),
-			// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
-			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
-		)
+		return workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 3*60*time.Second)
 	}
 
 	controllerOpt.WorkerQueueRateLimiterFactory = func() workqueue.RateLimiter {
-		return workqueue.NewMaxOfRateLimiter(
-			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 60*time.Second),
-			// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
-			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
-		)
+		return workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 3*60*time.Second)
 	}
 
 	return func(ctx context.Context) {
