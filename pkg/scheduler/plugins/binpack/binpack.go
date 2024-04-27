@@ -209,6 +209,10 @@ func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeig
 	requested := task.Resreq
 	allocatable := node.Allocatable
 
+	// we should not take into account preemptable tasks
+	// in the calculation as this creates bad fragmentation
+	// if we take them into account, the binpack plugin will consider
+	// that it cannot place the task on the node
 	used := node.Used.Clone()
 	if !task.Preemptable {
 		for _, ti := range node.Tasks {
