@@ -263,7 +263,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 
 			// Allocate idle resource to the task.
-			if task.InitResreq.LessEqual(bestNode.IdleWithPreemptable(task), api.Zero) {
+			if task.InitResreq.LessEqual(bestNode.Idle, api.Zero) {
 				klog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
 					task.Namespace, task.Name, bestNode.Name)
 				if err := stmt.Allocate(task, bestNode); err != nil {
