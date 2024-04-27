@@ -96,7 +96,7 @@ type NodeInfo struct {
 // plus preemtable jobs resources if preemptor is not preemptable
 func (ni *NodeInfo) FutureIdle(preemptor *TaskInfo) *Resource {
 	futureIdle := ni.Idle.Clone()
-	if preemptor.Preemptable {
+	if preemptor == nil || preemptor.Preemptable {
 		return futureIdle.Add(ni.Releasing).Sub(ni.Pipelined)
 	}
 
@@ -112,7 +112,7 @@ func (ni *NodeInfo) FutureIdle(preemptor *TaskInfo) *Resource {
 // todo: add comment
 func (ni *NodeInfo) IdleWithPreemptable(preemptor *TaskInfo) *Resource {
 	idleWithPreemptable := ni.Idle.Clone()
-	if preemptor.Preemptable {
+	if preemptor == nil || preemptor.Preemptable {
 		return ni.Idle
 	}
 
