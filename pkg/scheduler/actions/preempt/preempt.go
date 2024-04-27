@@ -297,7 +297,7 @@ func preempt(
 			// so if current queue is not allocatable(the queue will be overused when consider current preemptor's requests)
 			// or current idle resource is not enougth for preemptor, it need to continue preempting
 			// otherwise, break out
-			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(preemptor), api.Zero) {
 				klog.V(3).Infof("Preemptor's queue is allocatable and Task <%s/%s> reclaimed enough resources, skip preemption",
 					preemptor.Namespace, preemptor.Name)
 				break
@@ -324,7 +324,7 @@ func preempt(
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
 		// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
-		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(preemptor), api.Zero) {
 			klog.V(3).Infof("Preemptor's queue is allocatable and Task <%s/%s> reclaimed enough resources, trying to pipeline",
 				preemptor.Namespace, preemptor.Name)
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {

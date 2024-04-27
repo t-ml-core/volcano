@@ -102,7 +102,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	allNodes := ssn.NodeList
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		// Check for Resource Predicate
-		if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
+		if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(task), api.Zero); !ok {
 			return nil, api.NewFitError(task, node, api.WrapInsufficientResourceReason(resources))
 		}
 		var statusSets util.StatusSets
@@ -207,6 +207,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				break
 			}
 
+			klog.V(3).Infof("predicated nodes [%v] for task %s/%s", predicateNodes, task.Namespace, task.Name)
+
 			// Candidate nodes are divided into two gradients:
 			// - the first gradient node: a list of free nodes that satisfy the task resource request;
 			// - The second gradient node: the node list whose sum of node idle resources and future idle meets the task resource request;
@@ -218,11 +220,11 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			for _, n := range predicateNodes {
 				if task.InitResreq.LessEqual(n.Idle, api.Zero) {
 					idleCandidateNodes = append(idleCandidateNodes, n)
-				} else if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
+				} else if task.InitResreq.LessEqual(n.FutureIdle(task), api.Zero) {
 					futureIdleCandidateNodes = append(futureIdleCandidateNodes, n)
 				} else {
 					klog.V(5).Infof("Predicate filtered node %v, idle: %v and future idle: %v do not meet the requirements of task: %v",
-						n.Name, n.Idle, n.FutureIdle(), task.Name)
+						n.Name, n.Idle, n.FutureIdle(task), task.Name)
 				}
 			}
 			candidateNodes = append(candidateNodes, idleCandidateNodes)
@@ -232,7 +234,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			for index, nodes := range candidateNodes {
 				if klog.V(5).Enabled() {
 					for _, node := range nodes {
-						klog.V(5).Infof("node %v, idle: %v, future idle: %v", node.Name, node.Idle, node.FutureIdle())
+						klog.V(5).Infof("node %v, idle: %v, future idle: %v", node.Name, node.Idle, node.FutureIdle(task))
 					}
 				}
 				switch {
@@ -272,7 +274,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					task.Namespace, task.Name, bestNode.Name)
 
 				// Allocate releasing resource to the task if any.
-				if task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero) {
+				if task.InitResreq.LessEqual(bestNode.FutureIdle(task), api.Zero) {
 					klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 						task.Namespace, task.Name, bestNode.Name, task.InitResreq, bestNode.Releasing)
 					if err := stmt.Pipeline(task, bestNode.Name); err != nil {
