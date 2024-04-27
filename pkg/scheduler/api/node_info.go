@@ -117,12 +117,12 @@ func (ni *NodeInfo) IdleWithPreemptable(preemptor *TaskInfo) *Resource {
 	}
 
 	for _, ti := range ni.Tasks {
-		if ti.Preemptable {
+		if ti.Preemptable && ti.Status != Pipelined && ti.Status != Releasing {
 			idleWithPreemptable.Add(ti.Resreq)
 		}
 	}
 
-	return idleWithPreemptable.Sub(ni.Pipelined).Sub(ni.Releasing)
+	return idleWithPreemptable
 }
 
 // GetNodeAllocatable return node Allocatable without OversubscriptionResource resource
