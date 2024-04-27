@@ -93,7 +93,7 @@ type NodeInfo struct {
 // FutureIdle returns resources that will be idle in the future:
 //
 // That is current idle resources plus released resources minus pipelined resources.
-// plus preemtable job resources if preemptor is not preemptable
+// plus preemtable jobs resources if preemptor is not preemptable
 func (ni *NodeInfo) FutureIdle(preemptor *TaskInfo) *Resource {
 	futureIdle := ni.Idle.Clone()
 	if preemptor.Preemptable {
