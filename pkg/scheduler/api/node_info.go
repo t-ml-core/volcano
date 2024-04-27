@@ -109,6 +109,22 @@ func (ni *NodeInfo) FutureIdle(preemptor *TaskInfo) *Resource {
 	return futureIdle.Sub(ni.Pipelined)
 }
 
+// todo: add comment
+func (ni *NodeInfo) IdleWithPreemptable(preemptor *TaskInfo) *Resource {
+	idleWithPreemptable := ni.Idle.Clone()
+	if preemptor.Preemptable {
+		return ni.Idle
+	}
+
+	for _, ti := range ni.Tasks {
+		if ti.Preemptable {
+			idleWithPreemptable.Add(ti.Resreq)
+		}
+	}
+
+	return idleWithPreemptable.Sub(ni.Pipelined).Sub(ni.Releasing)
+}
+
 // GetNodeAllocatable return node Allocatable without OversubscriptionResource resource
 func (ni *NodeInfo) GetNodeAllocatable() *Resource {
 	return NewResource(ni.Node.Status.Allocatable)

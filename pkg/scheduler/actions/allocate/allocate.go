@@ -207,7 +207,12 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				break
 			}
 
-			klog.V(3).Infof("predicated nodes [%v] for task %s/%s", predicateNodes, task.Namespace, task.Name)
+			var predicateNodeNames []string
+			for _, node := range predicateNodes {
+				predicateNodeNames = append(predicateNodeNames, node.Name)
+			}
+
+			klog.V(3).Infof("predicated nodes %v for task %s/%s", predicateNodeNames, task.Namespace, task.Name)
 
 			// Candidate nodes are divided into two gradients:
 			// - the first gradient node: a list of free nodes that satisfy the task resource request;
@@ -218,13 +223,13 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			var idleCandidateNodes []*api.NodeInfo
 			var futureIdleCandidateNodes []*api.NodeInfo
 			for _, n := range predicateNodes {
-				if task.InitResreq.LessEqual(n.Idle, api.Zero) {
+				if task.InitResreq.LessEqual(n.IdleWithPreemptable(task), api.Zero) {
 					idleCandidateNodes = append(idleCandidateNodes, n)
 				} else if task.InitResreq.LessEqual(n.FutureIdle(task), api.Zero) {
 					futureIdleCandidateNodes = append(futureIdleCandidateNodes, n)
 				} else {
 					klog.V(5).Infof("Predicate filtered node %v, idle: %v and future idle: %v do not meet the requirements of task: %v",
-						n.Name, n.Idle, n.FutureIdle(task), task.Name)
+						n.Name, n.IdleWithPreemptable(task), n.FutureIdle(task), task.Name)
 				}
 			}
 			candidateNodes = append(candidateNodes, idleCandidateNodes)
@@ -234,7 +239,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			for index, nodes := range candidateNodes {
 				if klog.V(5).Enabled() {
 					for _, node := range nodes {
-						klog.V(5).Infof("node %v, idle: %v, future idle: %v", node.Name, node.Idle, node.FutureIdle(task))
+						klog.V(5).Infof("node %v, idle: %v, future idle: %v", node.Name, node.IdleWithPreemptable(task), node.FutureIdle(task))
 					}
 				}
 				switch {
@@ -258,7 +263,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 
 			// Allocate idle resource to the task.
-			if task.InitResreq.LessEqual(bestNode.Idle, api.Zero) {
+			if task.InitResreq.LessEqual(bestNode.IdleWithPreemptable(task), api.Zero) {
 				klog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
 					task.Namespace, task.Name, bestNode.Name)
 				if err := stmt.Allocate(task, bestNode); err != nil {
