@@ -97,6 +97,20 @@ func (ni *NodeInfo) FutureIdle() *Resource {
 	return ni.Idle.Clone().Add(ni.Releasing).Sub(ni.Pipelined)
 }
 
+// IdleAfterPreempt returns resources that will be idle after preemption:
+//
+// That is current idle resources plus all preemptable-tasks resources without Pipelined and Releasing tasks.
+func (ni *NodeInfo) IdleAfterPreempt() *Resource {
+	idleAfterPreempt := ni.Idle.Clone()
+	for _, ti := range ni.Tasks {
+		if ti.Preemptable && ti.Status != Pipelined && ti.Status != Releasing {
+			idleAfterPreempt.Add(ti.Resreq)
+		}
+	}
+
+	return idleAfterPreempt
+}
+
 // GetNodeAllocatable return node Allocatable without OversubscriptionResource resource
 func (ni *NodeInfo) GetNodeAllocatable() *Resource {
 	return NewResource(ni.Node.Status.Allocatable)
