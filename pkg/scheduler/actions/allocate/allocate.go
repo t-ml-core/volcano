@@ -232,7 +232,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			for _, n := range predicateNodes {
 				if task.InitResreq.LessEqual(n.Idle, api.Zero) {
 					idleCandidateNodes = append(idleCandidateNodes, n)
-				} else if task.InitResreq.LessEqual(n.IdleAfterPreempt(), api.Zero) {
+				} else if !task.Preemptable && task.InitResreq.LessEqual(n.IdleAfterPreempt(), api.Zero) {
 					idleAfterPreempt = append(idleAfterPreempt, n)
 				} else if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
 					futureIdleCandidateNodes = append(futureIdleCandidateNodes, n)
@@ -242,10 +242,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				}
 			}
 
-			if !task.Preemptable {
-				candidateNodes = append(candidateNodes, idleAfterPreempt)
-			}
-
+			candidateNodes = append(candidateNodes, idleAfterPreempt)
 			candidateNodes = append(candidateNodes, idleCandidateNodes)
 			candidateNodes = append(candidateNodes, futureIdleCandidateNodes)
 
