@@ -220,20 +220,21 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			klog.V(3).Infof("predicated nodes %v for task %s/%s", predicateNodeNames, task.Namespace, task.Name)
 
-			// Candidate nodes are divided into two gradients:
-			// - the first gradient node: a list of free nodes that satisfy the task resource request;
-			// - The second gradient node: the node list whose sum of node idle resources and future idle meets the task resource request;
+			// Candidate nodes are divided into 3 gradients:
+			// - the first gradient node (used only for non-preemptable task): a list of nodes that on which the resource will appear after preemption;
+			// - the second gradient node: a list of free nodes that satisfy the task resource request;
+			// - The third gradient node: the node list whose sum of node idle resources and future idle meets the task resource request;
 			// Score the first gradient node first. If the first gradient node meets the requirements, ignore the second gradient node list,
 			// otherwise, score the second gradient node and select the appropriate node.
 			var candidateNodes [][]*api.NodeInfo
+			var idleAfterPreempt []*api.NodeInfo
 			var idleCandidateNodes []*api.NodeInfo
 			var futureIdleCandidateNodes []*api.NodeInfo
-			var idleAfterPreempt []*api.NodeInfo
 			for _, n := range predicateNodes {
-				if task.InitResreq.LessEqual(n.Idle, api.Zero) {
-					idleCandidateNodes = append(idleCandidateNodes, n)
-				} else if !task.Preemptable && task.InitResreq.LessEqual(n.IdleAfterPreempt(), api.Zero) {
+				if !task.Preemptable && task.InitResreq.LessEqual(n.IdleAfterPreempt(), api.Zero) {
 					idleAfterPreempt = append(idleAfterPreempt, n)
+				} else if task.InitResreq.LessEqual(n.Idle, api.Zero) {
+					idleCandidateNodes = append(idleCandidateNodes, n)
 				} else if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
 					futureIdleCandidateNodes = append(futureIdleCandidateNodes, n)
 				} else {
