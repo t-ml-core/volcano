@@ -102,9 +102,15 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	allNodes := ssn.NodeList
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		// Check for Resource Predicate
-		if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(task), api.Zero); !ok {
+		nodeResources := node.FutureIdle()
+		if !task.Preemptable {
+			nodeResources = node.IdleAfterPreempt()
+		}
+
+		if ok, resources := task.InitResreq.LessEqualWithResourcesName(nodeResources, api.Zero); !ok {
 			return nil, api.NewFitError(task, node, api.WrapInsufficientResourceReason(resources))
 		}
+
 		var statusSets util.StatusSets
 		statusSets, err := ssn.PredicateFn(task, node)
 		if err != nil {
@@ -222,16 +228,24 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			var candidateNodes [][]*api.NodeInfo
 			var idleCandidateNodes []*api.NodeInfo
 			var futureIdleCandidateNodes []*api.NodeInfo
+			var idleAfterPreempt []*api.NodeInfo
 			for _, n := range predicateNodes {
-				if task.InitResreq.LessEqual(n.IdleWithPreemptable(task), api.Zero) {
+				if task.InitResreq.LessEqual(n.Idle, api.Zero) {
 					idleCandidateNodes = append(idleCandidateNodes, n)
-				} else if task.InitResreq.LessEqual(n.FutureIdle(task), api.Zero) {
+				} else if task.InitResreq.LessEqual(n.IdleAfterPreempt(), api.Zero) {
+					idleAfterPreempt = append(idleAfterPreempt, n)
+				} else if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
 					futureIdleCandidateNodes = append(futureIdleCandidateNodes, n)
 				} else {
-					klog.V(5).Infof("Predicate filtered node %v, idle: %v and future idle: %v do not meet the requirements of task: %v",
-						n.Name, n.IdleWithPreemptable(task), n.FutureIdle(task), task.Name)
+					klog.V(5).Infof("Predicate filtered node %v, idle: %v, future idle: %v, idle after preempt: %v; do not meet the requirements of task: %v",
+						n.Name, n.Idle, n.FutureIdle(), n.IdleAfterPreempt(), task.Name)
 				}
 			}
+
+			if !task.Preemptable {
+				candidateNodes = append(candidateNodes, idleAfterPreempt)
+			}
+
 			candidateNodes = append(candidateNodes, idleCandidateNodes)
 			candidateNodes = append(candidateNodes, futureIdleCandidateNodes)
 
@@ -239,7 +253,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			for index, nodes := range candidateNodes {
 				if klog.V(5).Enabled() {
 					for _, node := range nodes {
-						klog.V(5).Infof("node %v, idle: %v, future idle: %v", node.Name, node.IdleWithPreemptable(task), node.FutureIdle(task))
+						klog.V(5).Infof("node %v, idle: %v, future idle: %v, idle after preempt: %v", node.Name, node.Idle, node.FutureIdle(), node.IdleAfterPreempt())
 					}
 				}
 				switch {
@@ -278,8 +292,13 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				klog.V(3).Infof("Predicates failed in allocate for task <%s/%s> on node <%s> with limited resources",
 					task.Namespace, task.Name, bestNode.Name)
 
+				if !task.Preemptable && task.InitResreq.LessEqual(bestNode.IdleAfterPreempt(), api.Zero) {
+					ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, "the resource on node will appear only after preemption")
+					break
+				}
+
 				// Allocate releasing resource to the task if any.
-				if task.InitResreq.LessEqual(bestNode.FutureIdle(task), api.Zero) {
+				if task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero) {
 					klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 						task.Namespace, task.Name, bestNode.Name, task.InitResreq, bestNode.Releasing)
 					if err := stmt.Pipeline(task, bestNode.Name); err != nil {

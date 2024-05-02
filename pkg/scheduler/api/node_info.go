@@ -93,24 +93,24 @@ type NodeInfo struct {
 // FutureIdle returns resources that will be idle in the future:
 //
 // That is current idle resources plus released resources minus pipelined resources.
-// plus preemtable jobs resources if preemptor is not preemptable
-// todo: add comments
-func (ni *NodeInfo) FutureIdle(preemptor *TaskInfo) *Resource {
-	futureIdle := ni.Idle.Clone()
-	if preemptor == nil || preemptor.Preemptable {
-		return futureIdle.Add(ni.Releasing).Sub(ni.Pipelined)
-	}
+func (ni *NodeInfo) FutureIdle() *Resource {
+	return ni.Idle.Clone().Add(ni.Releasing).Sub(ni.Pipelined)
+}
 
+// todo: add comments
+func (ni *NodeInfo) IdleAfterPreempt() *Resource {
+	idleAfterPreempt := ni.Idle.Clone()
 	for _, ti := range ni.Tasks {
-		if ti.Preemptable {
-			futureIdle.Add(ti.Resreq)
+		if ti.Preemptable && ti.Status != Pipelined && ti.Status != Releasing {
+			idleAfterPreempt.Add(ti.Resreq)
 		}
 	}
 
-	return futureIdle.Sub(ni.Pipelined)
+	return idleAfterPreempt
 }
 
 // todo: add comment
+/*
 func (ni *NodeInfo) IdleWithPreemptable(preemptor *TaskInfo) *Resource {
 	idleWithPreemptable := ni.Idle.Clone()
 	if preemptor == nil || preemptor.Preemptable {
@@ -125,6 +125,7 @@ func (ni *NodeInfo) IdleWithPreemptable(preemptor *TaskInfo) *Resource {
 
 	return idleWithPreemptable
 }
+*/
 
 // GetNodeAllocatable return node Allocatable without OversubscriptionResource resource
 func (ni *NodeInfo) GetNodeAllocatable() *Resource {

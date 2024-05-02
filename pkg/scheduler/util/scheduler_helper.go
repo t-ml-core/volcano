@@ -176,7 +176,7 @@ func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api
 	// It is possible to complete the scheduling of the preemptor without evicting the task.
 	// In the first round, a large task (CPU: 8) is expelled, and a small task is scheduled (CPU: 2)
 	// When the following rounds of victims are empty, it is still allowed to schedule small tasks (CPU: 2)
-	futureIdle := node.FutureIdle(nil)
+	futureIdle := node.FutureIdle()
 	for _, victim := range victims {
 		futureIdle.Add(victim.Resreq)
 	}
