@@ -291,7 +291,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					task.Namespace, task.Name, bestNode.Name)
 
 				if !task.Preemptable && task.InitResreq.LessEqual(bestNode.IdleAfterPreempt(), api.Zero) {
-					ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, "the resource on node will appear only after preemption")
+					ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError,
+						fmt.Sprintf("the resource on node %s will appear only after preemption", bestNode.Name))
 					break
 				}
 
