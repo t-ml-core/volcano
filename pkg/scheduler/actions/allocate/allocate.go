@@ -221,8 +221,6 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				predicateNodeNames = append(predicateNodeNames, node.Name)
 			}
 
-			klog.V(3).Infof("predicated nodes %v for task %s/%s", predicateNodeNames, task.Namespace, task.Name)
-
 			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 			klog.V(3).Infof("predicated nodes %v for task %s/%s with scores %v",
 				predicateNodeNames, task.Namespace, task.Name, nodeScores)
