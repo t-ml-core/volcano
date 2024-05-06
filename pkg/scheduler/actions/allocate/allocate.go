@@ -102,16 +102,14 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	allNodes := ssn.NodeList
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		// Check for Resource Predicate
-		freeNodeResources := node.FutureIdle()
-		if !task.Preemptable {
-			nodeResourcesAfterPreempt := node.IdleAfterPreempt()
-			if nodeResourcesAfterPreempt.LessEqual(freeNodeResources, api.Zero) {
-				freeNodeResources = nodeResourcesAfterPreempt
+		if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
+			if task.Preemptable {
+				return nil, api.NewFitError(task, node, api.WrapInsufficientResourceReason(resources))
 			}
-		}
 
-		if ok, resources := task.InitResreq.LessEqualWithResourcesName(freeNodeResources, api.Zero); !ok {
-			return nil, api.NewFitError(task, node, api.WrapInsufficientResourceReason(resources))
+			if ok, resources = task.InitResreq.LessEqualWithResourcesName(node.IdleAfterPreempt(), api.Zero); !ok {
+				return nil, api.NewFitError(task, node, api.WrapInsufficientResourceReason(resources))
+			}
 		}
 
 		var statusSets util.StatusSets
