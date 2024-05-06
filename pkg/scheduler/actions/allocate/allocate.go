@@ -225,6 +225,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 			bestNode := ssn.BestNodeFn(task, nodeScores)
+			if bestNode == nil {
+				bestNode = util.SelectBestNode(nodeScores)
+			}
 
 			// Allocate idle resource to the task.
 			if task.InitResreq.LessEqual(bestNode.Idle, api.Zero) {
