@@ -286,15 +286,12 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 				}
+			} else if !task.Preemptable && task.InitResreq.LessEqual(bestNode.IdleAfterPreempt(), api.Zero) {
+				ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError,
+					fmt.Sprintf("the resource on node %s will appear only after preemption", bestNode.Name))
 			} else {
 				klog.V(3).Infof("Predicates failed in allocate for task <%s/%s> on node <%s> with limited resources",
 					task.Namespace, task.Name, bestNode.Name)
-
-				if !task.Preemptable && task.InitResreq.LessEqual(bestNode.IdleAfterPreempt(), api.Zero) {
-					ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError,
-						fmt.Sprintf("the resource on node %s will appear only after preemption", bestNode.Name))
-					break
-				}
 
 				// Allocate releasing resource to the task if any.
 				if task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero) {
