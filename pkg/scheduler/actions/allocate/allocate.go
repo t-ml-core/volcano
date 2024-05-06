@@ -222,8 +222,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 
 			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
-			klog.V(3).Infof("predicated nodes %v for task %s/%s with scores %v",
-				predicateNodeNames, task.Namespace, task.Name, nodeScores)
+			klog.V(3).Infof("predicated nodes %v for task %s/%s", predicateNodeNames, task.Namespace, task.Name)
 
 			bestNode := ssn.BestNodeFn(task, nodeScores)
 			if bestNode == nil {
