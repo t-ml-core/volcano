@@ -781,11 +781,9 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 }
 
 func (sc *SchedulerCache) WaitForNodesSync() {
-	ticker := time.NewTicker(time.Millisecond)
 	for sc.nodeQueue.Len() != 0 {
-		<-ticker.C
+		time.Sleep(time.Millisecond)
 	}
-	ticker.Stop()
 }
 
 // findJobAndTask returns job and the task info
