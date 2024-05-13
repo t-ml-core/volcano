@@ -148,7 +148,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			}
 
 			// Commit changes only if job is pipelined, otherwise try next job.
-			if ssn.JobPipelined(preemptorJob) {
+			if ssn.JobReady(preemptorJob) {
 				stmt.Commit()
 			} else {
 				stmt.Discard()
@@ -327,7 +327,7 @@ func preempt(
 		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 			klog.V(3).Infof("Preemptor's queue is allocatable and Task <%s/%s> reclaimed enough resources, trying to pipeline",
 				preemptor.Namespace, preemptor.Name)
-			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
+			if err := stmt.Allocate(preemptor, node); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
 			}
