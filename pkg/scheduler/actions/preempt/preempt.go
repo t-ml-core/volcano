@@ -214,11 +214,12 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			idx := slices.IndexFunc(ssn.NodeList, func(i *api.NodeInfo) bool {
 				return i.Name == task.NodeName
 			})
-			node := ssn.NodeList[idx]
 
 			if idx == -1 {
 				continue
 			}
+
+			node := ssn.NodeList[idx]
 
 			if err := stmt.Unpipeline(task); err != nil {
 				klog.V(3).Infof("Can't unpipeline task <%s/%s> from node <%s>.",
