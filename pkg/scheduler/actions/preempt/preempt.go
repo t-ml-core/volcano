@@ -210,11 +210,15 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 	for _, job := range ssn.Jobs {
 		stmt := framework.NewStatement(ssn)
-		for _, task := range job.TaskStatusIndex[api.Pending] {
+		for _, task := range job.TaskStatusIndex[api.Pipelined] {
 			idx := slices.IndexFunc(ssn.NodeList, func(i *api.NodeInfo) bool {
 				return i.Name == task.NodeName
 			})
 			node := ssn.NodeList[idx]
+
+			if idx == -1 {
+				continue
+			}
 
 			if err := stmt.Unpipeline(task); err != nil {
 				klog.V(3).Infof("Can't unpipeline task <%s/%s> from node <%s>.",
