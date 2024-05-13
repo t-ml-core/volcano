@@ -18,6 +18,8 @@ package preempt
 
 import (
 	"fmt"
+	"slices"
+	"time"
 
 	"k8s.io/klog/v2"
 
@@ -148,7 +150,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			}
 
 			// Commit changes only if job is pipelined, otherwise try next job.
-			if ssn.JobReady(preemptorJob) {
+			if ssn.JobPipelined(preemptorJob) {
 				stmt.Commit()
 			} else {
 				stmt.Discard()
@@ -203,6 +205,35 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 	// call victimTasksFn to evict tasks
 	victimTasks(ssn)
+
+	time.Sleep(time.Second)
+
+	for _, job := range ssn.Jobs {
+		stmt := framework.NewStatement(ssn)
+		for _, task := range job.TaskStatusIndex[api.Pending] {
+			idx := slices.IndexFunc(ssn.NodeList, func(i *api.NodeInfo) bool {
+				return i.Name == task.NodeName
+			})
+			node := ssn.NodeList[idx]
+
+			if err := stmt.Unpipeline(task); err != nil {
+				klog.V(3).Infof("Can't unpipeline task <%s/%s> from node <%s>.",
+					task.Namespace, task.Name, node.Name)
+			}
+
+			if err := stmt.Allocate(task, node); err != nil {
+				klog.V(3).Infof("Can't allocate task <%s/%s> on node <%s>.",
+					task.Namespace, task.Name, node.Name)
+			}
+		}
+
+		if ssn.JobReady(job) {
+			stmt.Commit()
+		} else {
+			stmt.Discard()
+			continue
+		}
+	}
 }
 
 func (pmpt *Action) UnInitialize() {}
@@ -327,7 +358,7 @@ func preempt(
 		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 			klog.V(3).Infof("Preemptor's queue is allocatable and Task <%s/%s> reclaimed enough resources, trying to pipeline",
 				preemptor.Namespace, preemptor.Name)
-			if err := stmt.Allocate(preemptor, node); err != nil {
+			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
 			}

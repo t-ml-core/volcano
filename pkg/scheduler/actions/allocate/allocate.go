@@ -228,7 +228,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 
 			// Allocate idle resource to the task.
-			if task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero) {
+			if task.InitResreq.LessEqual(bestNode.Idle, api.Zero) {
 				klog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
 					task.Namespace, task.Name, bestNode.Name)
 				if err := stmt.Allocate(task, bestNode); err != nil {
@@ -239,11 +239,25 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 				}
-			} else if !task.Preemptable && task.InitResreq.LessEqual(bestNode.IdleAfterPreempt(), api.Zero) {
+			} else {
 				klog.V(3).Infof("Predicates failed in allocate for task <%s/%s> on node <%s> with limited resources",
 					task.Namespace, task.Name, bestNode.Name)
-				ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError,
-					fmt.Sprintf("the resource on node %s will appear only after preemption", bestNode.Name))
+
+				// Allocate releasing resource to the task if any.
+				if task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero) {
+					klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
+						task.Namespace, task.Name, bestNode.Name, task.InitResreq, bestNode.Releasing)
+					if err := stmt.Pipeline(task, bestNode.Name); err != nil {
+						klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
+							task.UID, bestNode.Name, ssn.UID, err)
+					} else {
+						metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
+						metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
+					}
+				} else if !task.Preemptable && task.InitResreq.LessEqual(bestNode.IdleAfterPreempt(), api.Zero) {
+					ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError,
+						fmt.Sprintf("the resource on node %s will appear only after preemption", bestNode.Name))
+				}
 			}
 
 			if ssn.JobReady(job) && !tasks.Empty() {

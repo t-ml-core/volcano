@@ -435,7 +435,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			pp.updateShare(attr)
 
-			klog.V(4).Infof("Proportion AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			klog.V(4).Infof("Proportion AllocateFunc: task <%v/%v>, resreq <%v>, share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 		DeallocateFunc: func(event *framework.Event) {
@@ -450,7 +450,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			pp.updateShare(attr)
 
-			klog.V(4).Infof("Proportion EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			klog.V(4).Infof("Proportion EvictFunc: task <%v/%v>, resreq <%v>, share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 	})
