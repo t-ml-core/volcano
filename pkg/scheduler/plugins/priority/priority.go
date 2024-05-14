@@ -90,7 +90,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, preemptee := range preemptees {
 			preempteeJob, ok := ssn.Jobs[preemptee.Job]
 			if !ok {
-				klog.V(2).Infof("Can not find job `%s` for preempt task %s", preemptee.Job, preemptee.Name)
+				klog.V(4).Infof("Can not find job `%s` for preempt task %s", preemptee.Job, preemptee.Name)
 				continue
 			}
 
