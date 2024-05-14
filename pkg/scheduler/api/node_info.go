@@ -29,7 +29,6 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
-	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 type AllocateFailError struct {
@@ -101,7 +100,8 @@ func (ni *NodeInfo) FutureIdle() *Resource {
 // IdleAfterPreempt returns resources that will be idle after preemption:
 //
 // That is current idle resources plus all preemptable-tasks for preemptor.
-func (ni *NodeInfo) IdleAfterPreempt(ssn *framework.Session, preemptor *TaskInfo) *Resource {
+func (ni *NodeInfo) IdleAfterPreempt(preemptor *TaskInfo,
+	validatePreemptees func(*TaskInfo, []*TaskInfo) []*TaskInfo) *Resource {
 	var preemptees []*TaskInfo
 	for _, ti := range ni.Tasks {
 		if ti.Preemptable && PreemptableStatus(ti.Status) {
@@ -110,7 +110,7 @@ func (ni *NodeInfo) IdleAfterPreempt(ssn *framework.Session, preemptor *TaskInfo
 	}
 
 	idleAfterPreempt := ni.Idle.Clone()
-	victims := ssn.Preemptable(preemptor, preemptees)
+	victims := validatePreemptees(preemptor, preemptees)
 	for _, ti := range victims {
 		idleAfterPreempt.Add(ti.Resreq)
 	}
