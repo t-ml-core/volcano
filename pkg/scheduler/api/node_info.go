@@ -103,7 +103,7 @@ func (ni *NodeInfo) FutureIdle() *Resource {
 func (ni *NodeInfo) IdleAfterPreempt() *Resource {
 	idleAfterPreempt := ni.Idle.Clone()
 	for _, ti := range ni.Tasks {
-		if ti.Preemptable && ti.Status != Pipelined && ti.Status != Releasing {
+		if ti.Preemptable && PreemptableStatus(ti.Status) {
 			idleAfterPreempt.Add(ti.Resreq)
 		}
 	}
