@@ -54,6 +54,8 @@ type queueAttr struct {
 	deserved  *api.Resource
 	allocated *api.Resource
 	request   *api.Resource
+	// preemption represents the sum of preemtable jobs
+	preemption *api.Resource
 	// elastic represents the sum of job's elastic resource, job's elastic = job.allocated - job.minAvailable
 	elastic *api.Resource
 	// inqueue represents the resource request of the inqueue job
@@ -67,10 +69,11 @@ type queueAttr struct {
 // New return proportion action
 func New(arguments framework.Arguments) framework.Plugin {
 	return &proportionPlugin{
-		totalResource:   api.EmptyResource(),
-		totalGuarantee:  api.EmptyResource(),
-		queueOpts:       map[api.QueueID]*queueAttr{},
-		pluginArguments: arguments,
+		totalResource:              api.EmptyResource(),
+		totalGuarantee:             api.EmptyResource(),
+		totalNotAllocatedResources: api.EmptyResource(),
+		queueOpts:                  map[api.QueueID]*queueAttr{},
+		pluginArguments:            arguments,
 	}
 }
 
@@ -119,12 +122,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				name:    queue.Name,
 				weight:  queue.Weight,
 
-				deserved:  api.EmptyResource(),
-				allocated: api.EmptyResource(),
-				request:   api.EmptyResource(),
-				elastic:   api.EmptyResource(),
-				inqueue:   api.EmptyResource(),
-				guarantee: api.EmptyResource(),
+				deserved:   api.EmptyResource(),
+				allocated:  api.EmptyResource(),
+				request:    api.EmptyResource(),
+				preemption: api.EmptyResource(),
+				elastic:    api.EmptyResource(),
+				inqueue:    api.EmptyResource(),
+				guarantee:  api.EmptyResource(),
 			}
 			if len(queue.Queue.Spec.Capability) != 0 {
 				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
@@ -159,6 +163,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			} else if status == api.Pending {
 				for _, t := range tasks {
 					attr.request.Add(t.Resreq)
+				}
+			}
+
+			for _, task := range tasks {
+				if task.Preemptable {
+					attr.preemption.Add(task.Resreq)
 				}
 			}
 		}
@@ -289,6 +299,14 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
+
+		if !pp.queueOpts[lv.UID].preemption.Equal(pp.queueOpts[rv.UID].preemption, api.Zero) {
+			if pp.queueOpts[lv.UID].preemption.Less(pp.queueOpts[rv.UID].preemption, api.Zero) {
+				return 1
+			}
+
+			return -1
+		}
 
 		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
 			return 0

@@ -18,11 +18,7 @@ package preempt
 
 import (
 	"fmt"
-	"slices"
-	"time"
-
 	"k8s.io/klog/v2"
-
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -205,40 +201,6 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 	// call victimTasksFn to evict tasks
 	victimTasks(ssn)
-
-	time.Sleep(time.Second)
-
-	for _, job := range ssn.Jobs {
-		stmt := framework.NewStatement(ssn)
-		for _, task := range job.TaskStatusIndex[api.Pipelined] {
-			idx := slices.IndexFunc(ssn.NodeList, func(i *api.NodeInfo) bool {
-				return i.Name == task.NodeName
-			})
-
-			if idx == -1 {
-				continue
-			}
-
-			node := ssn.NodeList[idx]
-
-			if err := stmt.Unpipeline(task); err != nil {
-				klog.V(3).Infof("Can't unpipeline task <%s/%s> from node <%s>.",
-					task.Namespace, task.Name, node.Name)
-			}
-
-			if err := stmt.Allocate(task, node); err != nil {
-				klog.V(3).Infof("Can't allocate task <%s/%s> on node <%s>.",
-					task.Namespace, task.Name, node.Name)
-			}
-		}
-
-		if ssn.JobReady(job) {
-			stmt.Commit()
-		} else {
-			stmt.Discard()
-			continue
-		}
-	}
 }
 
 func (pmpt *Action) UnInitialize() {}
