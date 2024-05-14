@@ -88,7 +88,12 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		var victims []*api.TaskInfo
 		for _, preemptee := range preemptees {
-			preempteeJob := ssn.Jobs[preemptee.Job]
+			preempteeJob, ok := ssn.Jobs[preemptee.Job]
+			if !ok {
+				klog.V(4).Infof("Can not find job `%s` for preempt task <%v/%v>", preemptee.Job, preemptee.Namespace, preemptee.Name)
+				continue
+			}
+
 			if preempteeJob.UID != preemptorJob.UID {
 				if preempteeJob.Priority >= preemptorJob.Priority { // Preemption between Jobs within Queue
 					klog.V(4).Infof("Can not preempt task <%v/%v>"+

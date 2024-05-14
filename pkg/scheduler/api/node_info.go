@@ -99,13 +99,20 @@ func (ni *NodeInfo) FutureIdle() *Resource {
 
 // IdleAfterPreempt returns resources that will be idle after preemption:
 //
-// That is current idle resources plus all preemptable-tasks resources without Pipelined and Releasing tasks.
-func (ni *NodeInfo) IdleAfterPreempt() *Resource {
-	idleAfterPreempt := ni.Idle.Clone()
+// That is current idle resources plus all preemptable-tasks for preemptor.
+func (ni *NodeInfo) IdleAfterPreempt(preemptor *TaskInfo,
+	validatePreemptees func(*TaskInfo, []*TaskInfo) []*TaskInfo) *Resource {
+	var preemptees []*TaskInfo
 	for _, ti := range ni.Tasks {
-		if ti.Preemptable && ti.Status != Pipelined && ti.Status != Releasing {
-			idleAfterPreempt.Add(ti.Resreq)
+		if ti.Preemptable && PreemptableStatus(ti.Status) {
+			preemptees = append(preemptees, ti.Clone())
 		}
+	}
+
+	idleAfterPreempt := ni.Idle.Clone()
+	victims := validatePreemptees(preemptor, preemptees)
+	for _, ti := range victims {
+		idleAfterPreempt.Add(ti.Resreq)
 	}
 
 	return idleAfterPreempt

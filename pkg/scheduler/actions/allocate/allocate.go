@@ -107,7 +107,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				return nil, api.NewFitError(task, node, api.WrapInsufficientResourceReason(resources))
 			}
 
-			if ok, resources = task.InitResreq.LessEqualWithResourcesName(node.IdleAfterPreempt(), api.Zero); !ok {
+			if ok, resources = task.InitResreq.LessEqualWithResourcesName(node.IdleAfterPreempt(task, ssn.Preemptable), api.Zero); !ok {
 				return nil, api.NewFitError(task, node, api.WrapInsufficientResourceReason(resources))
 			}
 		}
@@ -254,7 +254,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 						metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 						metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 					}
-				} else if !task.Preemptable && task.InitResreq.LessEqual(bestNode.IdleAfterPreempt(), api.Zero) {
+				} else if !task.Preemptable && task.InitResreq.LessEqual(bestNode.IdleAfterPreempt(task, ssn.Preemptable), api.Zero) {
 					ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError,
 						fmt.Sprintf("the resource on node %s will appear only after preemption", bestNode.Name))
 				}

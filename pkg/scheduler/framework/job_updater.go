@@ -93,9 +93,7 @@ func (ju *jobUpdater) updateJob(index int) {
 	job := ju.jobQueue[index]
 	ssn := ju.ssn
 
-	klog.V(4).Infof("update job at the end of the session. job: %s, status: %+v", job.Name, job.PodGroup.Status.PendingReasonInfo)
 	job.PodGroup.Status = jobStatus(ssn, job)
-	klog.V(4).Infof("update job at the end of the session after status. job: %s, status: %+v", job.Name, job.PodGroup.Status.PendingReasonInfo)
 	oldStatus, found := ssn.podGroupStatus[job.UID]
 	updatePG := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
 	klog.V(4).Infof("update job at the end of the session update: %v. job: %s, status: %+v", updatePG, job.Name, job.PodGroup.Status.PendingReasonInfo)
