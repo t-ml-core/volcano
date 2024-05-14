@@ -91,6 +91,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 			preempteeJob, ok := ssn.Jobs[preemptee.Job]
 			if !ok {
 				klog.V(2).Infof("Can not find job `%s` for preempt", preemptee.Job)
+				continue
 			}
 
 			if preempteeJob.UID != preemptorJob.UID {
