@@ -354,9 +354,6 @@ func (s *Statement) Discard() {
 		op := s.operations[i]
 		op.task.GenerateLastTxContext()
 
-		klog.V(3).Infof("Discard operations on task <%v/%v> on node <%v> with status %s",
-			op.task.Namespace, op.task.Name, op.task.NodeName, op.task.Status)
-
 		switch op.name {
 		case Evict:
 			err := s.unevict(op.task)
@@ -382,9 +379,6 @@ func (s *Statement) Commit() {
 	klog.V(3).Info("Committing operations ...")
 	for _, op := range s.operations {
 		op.task.ClearLastTxContext()
-
-		klog.V(3).Infof("Commit operations on task <%v/%v> on node <%v> with status %s",
-			op.task.Namespace, op.task.Name, op.task.NodeName, op.task.Status)
 
 		switch op.name {
 		case Evict:
