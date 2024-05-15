@@ -114,10 +114,20 @@ func New(arguments framework.Arguments) framework.Plugin {
 	}
 
 	if ignoreNodeLabelsI, ok := arguments[ignoreNodeLabelsOpt]; ok {
-		if ignoreNodeLabels, ok := ignoreNodeLabelsI.(map[string][]any); ok {
-			for labelName, labelValues := range ignoreNodeLabels {
+		if ignoreNodeLabels, ok := ignoreNodeLabelsI.(map[any]any); ok {
+			for labelNameI, labelValuesI := range ignoreNodeLabels {
+				labelName, ok := labelNameI.(string)
+				if !ok {
+					continue
+				}
+
 				if _, ok := pp.ignoreNodeLabels[labelName]; !ok {
 					pp.ignoreNodeLabels[labelName] = []string{}
+				}
+
+				labelValues, ok := labelValuesI.([]any)
+				if !ok {
+					continue
 				}
 
 				for _, labelValueI := range labelValues {
@@ -126,8 +136,6 @@ func New(arguments framework.Arguments) framework.Plugin {
 					}
 				}
 			}
-		} else {
-			klog.V(2).Infof("ignoreNodeLabels type %T", ignoreNodeLabelsI)
 		}
 	}
 
