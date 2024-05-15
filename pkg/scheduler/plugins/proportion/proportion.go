@@ -46,7 +46,7 @@ type proportionPlugin struct {
 	totalNotAllocatedResources *api.Resource
 	queueOpts                  map[api.QueueID]*queueAttr
 
-	ignoreTaintsKeys []string
+	ignoreTaintKeys  []string
 	ignoreNodeLabels map[string][]string
 
 	// Arguments given for the plugin
@@ -97,7 +97,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		totalNotAllocatedResources: api.EmptyResource(),
 		queueOpts:                  map[api.QueueID]*queueAttr{},
 
-		ignoreTaintsKeys: []string{},
+		ignoreTaintKeys:  []string{},
 		ignoreNodeLabels: map[string][]string{},
 
 		pluginArguments: arguments,
@@ -105,11 +105,13 @@ func New(arguments framework.Arguments) framework.Plugin {
 
 	if ignoreNodeTaintKeysI, ok := arguments[ignoreNodeTaintKeysOpt]; ok {
 		if ignoreNodeTaintKeys, ok := ignoreNodeTaintKeysI.([]string); ok {
-			pp.ignoreTaintsKeys = ignoreNodeTaintKeys
+			pp.ignoreTaintKeys = ignoreNodeTaintKeys
+		} else {
+			klog.V(2).Infof("real type of ignoreNodeTaintKeys is %T", ignoreNodeTaintKeysI)
 		}
 	}
 
-	klog.V(2).Infof("The total resource is %v", pp.ignoreTaintsKeys)
+	klog.V(2).Infof("ignore taint keys %v", pp.ignoreTaintKeys)
 
 	return pp
 }
@@ -158,7 +160,7 @@ func (pp *proportionPlugin) enableNodeInProportion(node *api.NodeInfo) bool {
 	}
 
 	for _, taint := range node.Node.Spec.Taints {
-		for _, ignoreTaintKey := range pp.ignoreTaintsKeys {
+		for _, ignoreTaintKey := range pp.ignoreTaintKeys {
 			if taint.Key == ignoreTaintKey {
 				return false
 			}
