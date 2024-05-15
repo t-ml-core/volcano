@@ -17,9 +17,10 @@ limitations under the License.
 package proportion
 
 import (
-	"k8s.io/klog/v2"
 	"math"
 	"reflect"
+
+	"k8s.io/klog/v2"
 
 	v1 "k8s.io/api/core/v1"
 
@@ -240,7 +241,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	klog.V(2).Infof("The total resource in proportion plugin <%v>, in cluster <%v>", pp.totalResource, ssn.TotalResource)
+	klog.V(4).Infof("The total resource in proportion plugin <%v>, in cluster <%v>", pp.totalResource, ssn.TotalResource)
 	for _, queue := range ssn.Queues {
 		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
 			continue
