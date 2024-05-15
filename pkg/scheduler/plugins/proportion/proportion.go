@@ -127,11 +127,11 @@ func New(arguments framework.Arguments) framework.Plugin {
 				}
 			}
 		} else {
-			klog.V(2).Infof("ignoreNodeLabels type %T", ignoreNodeLabels)
+			klog.V(2).Infof("ignoreNodeLabels type %T", ignoreNodeLabelsI)
 		}
 	}
 
-	klog.V(2).Infof("%s: %v; %s %v", ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys, ignoreNodeLabelsOpt, pp.ignoreNodeLabels)
+	klog.V(2).Infof("%s: %v; %s: %v", ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys, ignoreNodeLabelsOpt, pp.ignoreNodeLabels)
 
 	return pp
 }
