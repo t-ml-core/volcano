@@ -17,10 +17,9 @@ limitations under the License.
 package proportion
 
 import (
+	"k8s.io/klog/v2"
 	"math"
 	"reflect"
-
-	"k8s.io/klog/v2"
 
 	v1 "k8s.io/api/core/v1"
 
@@ -33,14 +32,23 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
-// PluginName indicates name of volcano scheduler plugin.
-const PluginName = "proportion"
+const (
+	// PluginName indicates name of volcano scheduler plugin.
+	PluginName = "proportion"
+
+	ignoreNodeTaintKeysOpt = "ignore.node.taint.keys"
+	ignoreNodeLabelsOpt    = "ignore.node.labels"
+)
 
 type proportionPlugin struct {
 	totalResource              *api.Resource
 	totalGuarantee             *api.Resource
 	totalNotAllocatedResources *api.Resource
 	queueOpts                  map[api.QueueID]*queueAttr
+
+	ignoreTaintsKeys []string
+	ignoreNodeLabels map[string][]string
+
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
 }
@@ -66,19 +74,98 @@ type queueAttr struct {
 	guarantee      *api.Resource
 }
 
+/*
+   - plugins:
+     - name: proportion
+       arguments:
+         ignore.node.taint.keys:
+            - node.kubernetes.io/unschedulable
+            - ...
+         ignore.node.labels:
+           kubernetes.io/hostname:
+             - host1
+             - host2
+             - ...
+           ...
+*/
+
 // New return proportion action
 func New(arguments framework.Arguments) framework.Plugin {
-	return &proportionPlugin{
+	pp := &proportionPlugin{
 		totalResource:              api.EmptyResource(),
 		totalGuarantee:             api.EmptyResource(),
 		totalNotAllocatedResources: api.EmptyResource(),
 		queueOpts:                  map[api.QueueID]*queueAttr{},
-		pluginArguments:            arguments,
+
+		ignoreTaintsKeys: []string{},
+		ignoreNodeLabels: map[string][]string{},
+
+		pluginArguments: arguments,
 	}
+
+	if ignoreNodeTaintKeysI, ok := arguments[ignoreNodeTaintKeysOpt]; ok {
+		if ignoreNodeTaintKeys, ok := ignoreNodeTaintKeysI.([]string); ok {
+			pp.ignoreTaintsKeys = ignoreNodeTaintKeys
+		}
+	}
+
+	klog.V(2).Infof("The total resource is %v", pp.ignoreTaintsKeys)
+
+	return pp
 }
 
 func (pp *proportionPlugin) Name() string {
 	return PluginName
+}
+
+func (pp *proportionPlugin) enableTaskInProportion(info *api.TaskInfo) bool {
+	if info.Pod == nil ||
+		info.Pod.Spec.Affinity == nil ||
+		info.Pod.Spec.Affinity.NodeAffinity == nil ||
+		info.Pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+		return true
+	}
+	tersm := info.Pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+
+	// task has node affinity on ignore node
+	for _, term := range tersm {
+		for _, expression := range term.MatchExpressions {
+			if expression.Operator != v1.NodeSelectorOpIn {
+				continue
+			}
+
+			ignoreValues, ok := pp.ignoreNodeLabels[expression.Key]
+			if !ok {
+				continue
+			}
+
+			for _, taskExpressionValue := range expression.Values {
+				for _, ignoreValue := range ignoreValues {
+					if taskExpressionValue == ignoreValue {
+						return false
+					}
+				}
+			}
+		}
+	}
+
+	return true
+}
+
+func (pp *proportionPlugin) enableNodeInProportion(node *api.NodeInfo) bool {
+	if !node.Ready() {
+		return false
+	}
+
+	for _, taint := range node.Node.Spec.Taints {
+		for _, ignoreTaintKey := range pp.ignoreTaintsKeys {
+			if taint.Key == ignoreTaintKey {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 func (pp *proportionPlugin) calculateTotalResources() {
@@ -101,7 +188,11 @@ func (pp *proportionPlugin) calculateTotalResources() {
 
 func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Prepare scheduling data for this session.
-	pp.totalResource.Add(ssn.TotalResource)
+	for _, node := range ssn.Nodes {
+		if pp.enableNodeInProportion(node) {
+			pp.totalResource.Add(node.Allocatable)
+		}
+	}
 
 	klog.V(4).Infof("The total resource is <%v>", pp.totalResource)
 	for _, queue := range ssn.Queues {
@@ -155,23 +246,25 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		attr := pp.queueOpts[job.Queue]
 		for status, tasks := range job.TaskStatusIndex {
-			if api.AllocatedStatus(status) {
-				for _, t := range tasks {
-					attr.allocated.Add(t.Resreq)
-					attr.request.Add(t.Resreq)
-				}
-			} else if status == api.Pending {
-				for _, t := range tasks {
-					attr.request.Add(t.Resreq)
-				}
-			}
-
 			for _, task := range tasks {
 				if task.Preemptable {
 					attr.preemption.Add(task.Resreq)
 				}
+
+				if !pp.enableTaskInProportion(task) {
+					continue
+				}
+
+				if api.AllocatedStatus(status) {
+					attr.allocated.Add(task.Resreq)
+					attr.request.Add(task.Resreq)
+				} else if status == api.Pending {
+					attr.request.Add(task.Resreq)
+				}
 			}
 		}
+
+		pp.calculateTotalResources()
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
 			attr.inqueue.Add(job.GetMinResources())
@@ -294,8 +387,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	pp.calculateTotalResources()
-
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
@@ -319,6 +410,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	})
 
+	// todo: (MLP-5725)
+	// доработки связанные с EnableTaskInProportion не были сделаны в этом методе, так как:
+	// 1) MLP-5725 - блокер и нет времени разбираться
+	// 2) reclaime action выключен
 	ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 		allocations := map[api.QueueID]*api.Resource{}
@@ -374,7 +469,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// Allow allocation over guaranteed resources for preemptable jobs
-		if preemptable && candidate.Resreq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
+		if (preemptable && candidate.Resreq.LessEqual(pp.totalNotAllocatedResources, api.Zero)) || !pp.enableTaskInProportion(candidate) {
 			return true
 		}
 
@@ -391,6 +486,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return allocatable
 	})
 
+	// todo: (MLP-5725)
+	// доработки связанные с EnableTaskInProportion не были сделаны в этом методе, так как:
+	// 1) MLP-5725 - блокер и нет времени разбираться
+	// 2) в нашей конфигурации `enableJobEnqueued: false`
 	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		queueID := job.Queue
@@ -442,6 +541,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Register event handlers.
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
+			if !pp.enableTaskInProportion(event.Task) {
+				return
+			}
+
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
@@ -457,6 +560,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 		DeallocateFunc: func(event *framework.Event) {
+			if !pp.enableTaskInProportion(event.Task) {
+				return
+			}
+
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
