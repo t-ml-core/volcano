@@ -104,8 +104,12 @@ func New(arguments framework.Arguments) framework.Plugin {
 	}
 
 	if ignoreNodeTaintKeysI, ok := arguments[ignoreNodeTaintKeysOpt]; ok {
-		if ignoreNodeTaintKeys, ok := ignoreNodeTaintKeysI.([]string); ok {
-			pp.ignoreTaintKeys = ignoreNodeTaintKeys
+		if ignoreNodeTaintKeys, ok := ignoreNodeTaintKeysI.([]any); ok {
+			for _, taintKeyI := range ignoreNodeTaintKeys {
+				if taintKey, ok := taintKeyI.(string); ok {
+					pp.ignoreTaintKeys = append(pp.ignoreTaintKeys, taintKey)
+				}
+			}
 		} else {
 			klog.V(2).Infof("real type of ignoreNodeTaintKeys is %T", ignoreNodeTaintKeysI)
 		}
