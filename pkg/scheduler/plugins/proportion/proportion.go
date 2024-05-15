@@ -456,11 +456,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	})
 
-	// todo: (MLP-5725)
-	// доработки связанные с EnableTaskInProportion не были сделаны в этом методе, так как:
-	// 1) MLP-5725 - блокер и нет времени разбираться
-	// 2) reclaime action выключен
 	ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		if !pp.enableTaskInProportion(reclaimer) {
+			return reclaimees, util.Permit
+		}
+
 		var victims []*api.TaskInfo
 		allocations := map[api.QueueID]*api.Resource{}
 
@@ -532,10 +532,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return allocatable
 	})
 
-	// todo: (MLP-5725)
-	// доработки связанные с EnableTaskInProportion не были сделаны в этом методе, так как:
-	// 1) MLP-5725 - блокер и нет времени разбираться
-	// 2) в нашей конфигурации `enableJobEnqueued: false`
 	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		queueID := job.Queue
