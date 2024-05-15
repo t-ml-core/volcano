@@ -110,12 +110,10 @@ func New(arguments framework.Arguments) framework.Plugin {
 					pp.ignoreTaintKeys = append(pp.ignoreTaintKeys, taintKey)
 				}
 			}
-		} else {
-			klog.V(2).Infof("real type of ignoreNodeTaintKeys is %T", ignoreNodeTaintKeysI)
 		}
 	}
 
-	klog.V(2).Infof("ignore taint keys %v", pp.ignoreTaintKeys)
+	klog.V(5).Infof("ignore.node.taint.keys: %v", pp.ignoreTaintKeys)
 
 	return pp
 }
@@ -166,6 +164,7 @@ func (pp *proportionPlugin) enableNodeInProportion(node *api.NodeInfo) bool {
 	for _, taint := range node.Node.Spec.Taints {
 		for _, ignoreTaintKey := range pp.ignoreTaintKeys {
 			if taint.Key == ignoreTaintKey {
+				klog.V(2).Infof("ignore node %s proportion plugin by taint %s", node.Name, taint.Key)
 				return false
 			}
 		}
@@ -200,7 +199,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	klog.V(4).Infof("The total resource is <%v>", pp.totalResource)
+	klog.V(2).Infof("The total resource in proportion plugin <%v>, in cluster <%v>", pp.totalResource, ssn.TotalResource)
 	for _, queue := range ssn.Queues {
 		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
 			continue
