@@ -131,7 +131,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		}
 	}
 
-	klog.V(5).Infof("ignore.node.taint.keys: %v", pp.ignoreTaintKeys)
+	klog.V(2).Infof("%s: %v; %s %v", ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys, ignoreNodeLabelsOpt, pp.ignoreNodeLabels)
 
 	return pp
 }
