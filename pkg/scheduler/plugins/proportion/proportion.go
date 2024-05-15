@@ -173,7 +173,7 @@ func (pp *proportionPlugin) enableTaskInProportion(info *api.TaskInfo) bool {
 			for _, taskExpressionValue := range expression.Values {
 				for _, ignoreValue := range ignoreValues {
 					if taskExpressionValue == ignoreValue {
-						klog.V(4).Infof("ignore task %s in proportion plugin by affinity %s", info.Name, expression.Key)
+						klog.V(3).Infof("ignore task %s in proportion plugin by affinity %s", info.Name, expression.Key)
 						return false
 					}
 				}
@@ -192,7 +192,7 @@ func (pp *proportionPlugin) enableNodeInProportion(node *api.NodeInfo) bool {
 	for _, taint := range node.Node.Spec.Taints {
 		for _, ignoreTaintKey := range pp.ignoreTaintKeys {
 			if taint.Key == ignoreTaintKey {
-				klog.V(4).Infof("ignore node %s in proportion plugin by taint %s", node.Name, taint.Key)
+				klog.V(3).Infof("ignore node %s in proportion plugin by taint %s", node.Name, taint.Key)
 				return false
 			}
 		}
@@ -206,7 +206,7 @@ func (pp *proportionPlugin) enableNodeInProportion(node *api.NodeInfo) bool {
 
 		for _, ignoreValue := range ignoreValues {
 			if value == ignoreValue {
-				klog.V(4).Infof("ignore node %s in proportion plugin by label %s with value %s", node.Name, name, value)
+				klog.V(3).Infof("ignore node %s in proportion plugin by label %s with value %s", node.Name, name, value)
 				return false
 			}
 		}
