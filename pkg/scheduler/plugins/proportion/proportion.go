@@ -156,10 +156,10 @@ func (pp *proportionPlugin) enableTaskInProportion(info *api.TaskInfo) bool {
 		info.Pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
 		return true
 	}
-	tersm := info.Pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+	terms := info.Pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
 
 	// task has node affinity on ignore node
-	for _, term := range tersm {
+	for _, term := range terms {
 		for _, expression := range term.MatchExpressions {
 			if expression.Operator != v1.NodeSelectorOpIn {
 				continue
