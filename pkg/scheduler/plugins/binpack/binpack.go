@@ -184,7 +184,7 @@ func (bp *binpackPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		binPackingScore := BinPackingScore(task, node, bp.weight)
+		binPackingScore := BinPackingScore(ssn, task, node, bp.weight)
 
 		klog.V(4).Infof("Binpack score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, binPackingScore)
 		return binPackingScore, nil
