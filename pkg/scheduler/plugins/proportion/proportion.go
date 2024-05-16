@@ -33,14 +33,23 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
-// PluginName indicates name of volcano scheduler plugin.
-const PluginName = "proportion"
+const (
+	// PluginName indicates name of volcano scheduler plugin.
+	PluginName = "proportion"
+
+	ignoreNodeTaintKeysOpt = "ignore.node.taint.keys"
+	ignoreNodeLabelsOpt    = "ignore.node.labels"
+)
 
 type proportionPlugin struct {
 	totalResource              *api.Resource
 	totalGuarantee             *api.Resource
 	totalNotAllocatedResources *api.Resource
 	queueOpts                  map[api.QueueID]*queueAttr
+
+	ignoreTaintKeys  []string
+	ignoreNodeLabels map[string][]string
+
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
 }
@@ -66,19 +75,144 @@ type queueAttr struct {
 	guarantee      *api.Resource
 }
 
+/*
+   - plugins:
+     - name: proportion
+       arguments:
+         ignore.node.taint.keys:
+            - node.kubernetes.io/unschedulable
+            - ...
+         ignore.node.labels:
+           kubernetes.io/hostname:
+             - host1
+             - host2
+             - ...
+           ...
+*/
+
 // New return proportion action
 func New(arguments framework.Arguments) framework.Plugin {
-	return &proportionPlugin{
+	pp := &proportionPlugin{
 		totalResource:              api.EmptyResource(),
 		totalGuarantee:             api.EmptyResource(),
 		totalNotAllocatedResources: api.EmptyResource(),
 		queueOpts:                  map[api.QueueID]*queueAttr{},
-		pluginArguments:            arguments,
+
+		ignoreTaintKeys:  []string{},
+		ignoreNodeLabels: map[string][]string{},
+
+		pluginArguments: arguments,
 	}
+
+	if ignoreNodeTaintKeysI, ok := arguments[ignoreNodeTaintKeysOpt]; ok {
+		if ignoreNodeTaintKeys, ok := ignoreNodeTaintKeysI.([]any); ok {
+			for _, taintKeyI := range ignoreNodeTaintKeys {
+				if taintKey, ok := taintKeyI.(string); ok {
+					pp.ignoreTaintKeys = append(pp.ignoreTaintKeys, taintKey)
+				}
+			}
+		}
+	}
+
+	if ignoreNodeLabelsI, ok := arguments[ignoreNodeLabelsOpt]; ok {
+		if ignoreNodeLabels, ok := ignoreNodeLabelsI.(map[any]any); ok {
+			for labelNameI, labelValuesI := range ignoreNodeLabels {
+				labelName, ok := labelNameI.(string)
+				if !ok {
+					continue
+				}
+
+				if _, ok := pp.ignoreNodeLabels[labelName]; !ok {
+					pp.ignoreNodeLabels[labelName] = []string{}
+				}
+
+				labelValues, ok := labelValuesI.([]any)
+				if !ok {
+					continue
+				}
+
+				for _, labelValueI := range labelValues {
+					if labelValue, ok := labelValueI.(string); ok {
+						pp.ignoreNodeLabels[labelName] = append(pp.ignoreNodeLabels[labelName], labelValue)
+					}
+				}
+			}
+		}
+	}
+
+	klog.V(5).Infof("%s: %v; %s: %v", ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys, ignoreNodeLabelsOpt, pp.ignoreNodeLabels)
+
+	return pp
 }
 
 func (pp *proportionPlugin) Name() string {
 	return PluginName
+}
+
+func (pp *proportionPlugin) enableTaskInProportion(info *api.TaskInfo) bool {
+	if info.Pod == nil ||
+		info.Pod.Spec.Affinity == nil ||
+		info.Pod.Spec.Affinity.NodeAffinity == nil ||
+		info.Pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+		return true
+	}
+	terms := info.Pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+
+	// task has node affinity on ignore node
+	for _, term := range terms {
+		for _, expression := range term.MatchExpressions {
+			if expression.Operator != v1.NodeSelectorOpIn {
+				continue
+			}
+
+			ignoreValues, ok := pp.ignoreNodeLabels[expression.Key]
+			if !ok {
+				continue
+			}
+
+			for _, taskExpressionValue := range expression.Values {
+				for _, ignoreValue := range ignoreValues {
+					if taskExpressionValue == ignoreValue {
+						klog.V(3).Infof("ignore task %s in proportion plugin by affinity %s", info.Name, expression.Key)
+						return false
+					}
+				}
+			}
+		}
+	}
+
+	return true
+}
+
+func (pp *proportionPlugin) enableNodeInProportion(node *api.NodeInfo) bool {
+	if !node.Ready() {
+		return false
+	}
+
+	for _, taint := range node.Node.Spec.Taints {
+		for _, ignoreTaintKey := range pp.ignoreTaintKeys {
+			if taint.Key == ignoreTaintKey {
+				klog.V(3).Infof("ignore node %s in proportion plugin by taint %s", node.Name, taint.Key)
+				return false
+			}
+		}
+	}
+
+	for name, value := range node.Node.Labels {
+		ignoreValues, ok := pp.ignoreNodeLabels[name]
+		if !ok {
+			continue
+		}
+
+		for _, ignoreValue := range ignoreValues {
+			if value == ignoreValue {
+				klog.V(3).Infof("ignore node %s in proportion plugin by label %s with value %s", node.Name, name, value)
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 func (pp *proportionPlugin) calculateTotalResources() {
@@ -101,9 +235,13 @@ func (pp *proportionPlugin) calculateTotalResources() {
 
 func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Prepare scheduling data for this session.
-	pp.totalResource.Add(ssn.TotalResource)
+	for _, node := range ssn.Nodes {
+		if pp.enableNodeInProportion(node) {
+			pp.totalResource.Add(node.Allocatable)
+		}
+	}
 
-	klog.V(4).Infof("The total resource is <%v>", pp.totalResource)
+	klog.V(4).Infof("The total resource in proportion plugin <%v>, in cluster <%v>", pp.totalResource, ssn.TotalResource)
 	for _, queue := range ssn.Queues {
 		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
 			continue
@@ -155,23 +293,25 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		attr := pp.queueOpts[job.Queue]
 		for status, tasks := range job.TaskStatusIndex {
-			if api.AllocatedStatus(status) {
-				for _, t := range tasks {
-					attr.allocated.Add(t.Resreq)
-					attr.request.Add(t.Resreq)
-				}
-			} else if status == api.Pending {
-				for _, t := range tasks {
-					attr.request.Add(t.Resreq)
-				}
-			}
-
 			for _, task := range tasks {
 				if task.Preemptable {
 					attr.preemption.Add(task.Resreq)
 				}
+
+				if !pp.enableTaskInProportion(task) {
+					continue
+				}
+
+				if api.AllocatedStatus(status) {
+					attr.allocated.Add(task.Resreq)
+					attr.request.Add(task.Resreq)
+				} else if status == api.Pending {
+					attr.request.Add(task.Resreq)
+				}
 			}
 		}
+
+		pp.calculateTotalResources()
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
 			attr.inqueue.Add(job.GetMinResources())
@@ -294,8 +434,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	pp.calculateTotalResources()
-
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
@@ -320,6 +458,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		if !pp.enableTaskInProportion(reclaimer) {
+			return reclaimees, util.Permit
+		}
+
 		var victims []*api.TaskInfo
 		allocations := map[api.QueueID]*api.Resource{}
 
@@ -374,7 +516,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// Allow allocation over guaranteed resources for preemptable jobs
-		if preemptable && candidate.Resreq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
+		if (preemptable && candidate.Resreq.LessEqual(pp.totalNotAllocatedResources, api.Zero)) || !pp.enableTaskInProportion(candidate) {
 			return true
 		}
 
@@ -442,6 +584,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Register event handlers.
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
+			if !pp.enableTaskInProportion(event.Task) {
+				return
+			}
+
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
@@ -457,6 +603,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 		DeallocateFunc: func(event *framework.Event) {
+			if !pp.enableTaskInProportion(event.Task) {
+				return
+			}
+
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)

@@ -135,6 +135,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					}
 
 					if !preemptor.Preemptable {
+						// todo: we should move this logic to our plugin
 						val, ok := task.Pod.Annotations[VolcanoForbidPreemptFromOtherProjectsAnnotation]
 						if !ok || val != "true" {
 							return preemptor.Job != task.Job
