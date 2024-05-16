@@ -440,10 +440,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		if !pp.queueOpts[lv.UID].preemption.Equal(pp.queueOpts[rv.UID].preemption, api.Zero) {
 			if pp.queueOpts[lv.UID].preemption.Less(pp.queueOpts[rv.UID].preemption, api.Zero) {
-				return -1
+				return 1
 			}
 
-			return 1
+			return -1
 		}
 
 		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
