@@ -203,7 +203,7 @@ func (bp *binpackPlugin) OnSessionClose(ssn *framework.Session) {
 // Goals:
 // - Schedule Jobs using BestFit Policy using Resource Bin Packing Priority Function
 // - Reduce Fragmentation of scarce resources on the Cluster
-func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeight) float64 {
+func BinPackingScore(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo, weight priorityWeight) float64 {
 	score := 0.0
 	weightSum := 0
 	requested := task.Resreq
@@ -213,17 +213,20 @@ func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeig
 	// in the calculation as this creates bad fragmentation
 	// if we take them into account, the binpack plugin will consider
 	// that it cannot place the task on the node
-	used := node.Used.Clone()
-	if !task.Preemptable {
-		for _, ti := range node.Tasks {
-			if !ti.Preemptable || ti.Status == api.Pipelined {
-				continue
-			}
-
-			if ti.Resreq.LessEqual(used, api.Zero) {
-				used = used.Sub(ti.Resreq)
-			}
+	var preemptees []*api.TaskInfo
+	for _, ti := range node.Tasks {
+		if ti.Preemptable && api.PreemptableStatus(ti.Status) {
+			preemptees = append(preemptees, ti.Clone())
 		}
+	}
+
+	used := node.Used.Clone()
+	victims := ssn.Preemptable(task, preemptees)
+	for _, ti := range victims {
+		used = used.Sub(ti.Resreq)
+		//if ti.Resreq.LessEqual(used, api.Zero) {
+		//	used = used.Sub(ti.Resreq)
+		//}
 	}
 
 	for _, resource := range requested.ResourceNames() {

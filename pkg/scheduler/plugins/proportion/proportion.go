@@ -140,7 +140,10 @@ func New(arguments framework.Arguments) framework.Plugin {
 		}
 	}
 
-	klog.V(5).Infof("%s: %v; %s: %v", ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys, ignoreNodeLabelsOpt, pp.ignoreNodeLabels)
+	klog.V(5).Infof("parsed proportion args %s: %v; %s: %v",
+		ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys,
+		ignoreNodeLabelsOpt, pp.ignoreNodeLabels,
+	)
 
 	return pp
 }
@@ -150,12 +153,35 @@ func (pp *proportionPlugin) Name() string {
 }
 
 func (pp *proportionPlugin) enableTaskInProportion(info *api.TaskInfo) bool {
-	if info.Pod == nil ||
-		info.Pod.Spec.Affinity == nil ||
+	if info.Preemptable {
+		klog.V(4).Infof("ignore preemptable task %s in proportion plugin", info.Name)
+		return false
+	}
+
+	if info.Pod == nil {
+		return true
+	}
+
+	for selectorName, selectorValue := range info.Pod.Spec.NodeSelector {
+		ignoreValues, ok := pp.ignoreNodeLabels[selectorName]
+		if !ok {
+			continue
+		}
+
+		for _, ignoreValue := range ignoreValues {
+			if selectorValue == ignoreValue {
+				klog.V(3).Infof("ignore task %s in proportion plugin by node selector %s", info.Name, selectorName)
+				return false
+			}
+		}
+	}
+
+	if info.Pod.Spec.Affinity == nil ||
 		info.Pod.Spec.Affinity.NodeAffinity == nil ||
 		info.Pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
 		return true
 	}
+
 	terms := info.Pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
 
 	// task has node affinity on ignore node
@@ -508,15 +534,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		job, found := ssn.Jobs[candidate.Job]
-		preemptable := false
 		if !found {
 			klog.V(3).Infof("Can't find job by id for task: <%v>", candidate)
-		} else {
-			preemptable = job.Preemptable
 		}
 
-		// Allow allocation over guaranteed resources for preemptable jobs
-		if (preemptable && candidate.Resreq.LessEqual(pp.totalNotAllocatedResources, api.Zero)) || !pp.enableTaskInProportion(candidate) {
+		if !pp.enableTaskInProportion(candidate) {
 			return true
 		}
 
