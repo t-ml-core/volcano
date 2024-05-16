@@ -158,7 +158,7 @@ func (pp *proportionPlugin) enableTaskInProportion(info *api.TaskInfo) bool {
 		return false
 	}
 
-	if info.Pod == nil || info.Pod.Spec.NodeSelector == nil {
+	if info.Pod == nil {
 		return true
 	}
 

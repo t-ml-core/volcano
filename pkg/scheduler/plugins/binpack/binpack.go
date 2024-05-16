@@ -213,20 +213,22 @@ func BinPackingScore(ssn *framework.Session, task *api.TaskInfo, node *api.NodeI
 	// in the calculation as this creates bad fragmentation
 	// if we take them into account, the binpack plugin will consider
 	// that it cannot place the task on the node
-	var preemptees []*api.TaskInfo
-	for _, ti := range node.Tasks {
-		if ti.Preemptable && api.PreemptableStatus(ti.Status) {
-			preemptees = append(preemptees, ti.Clone())
-		}
-	}
-
 	used := node.Used.Clone()
-	victims := ssn.Preemptable(task, preemptees)
-	for _, ti := range victims {
-		if ti.Resreq.LessEqual(used, api.Zero) {
-			used = used.Sub(ti.Resreq)
+	if !task.Preemptable {
+		var preemptees []*api.TaskInfo
+		for _, ti := range node.Tasks {
+			if ti.Preemptable && api.PreemptableStatus(ti.Status) {
+				preemptees = append(preemptees, ti.Clone())
+			}
 		}
-		// used = used.Sub(ti.Resreq)
+
+		victims := ssn.Preemptable(task, preemptees)
+		for _, ti := range victims {
+			if ti.Resreq.LessEqual(used, api.Zero) {
+				used = used.Sub(ti.Resreq)
+			}
+			// used = used.Sub(ti.Resreq)
+		}
 	}
 
 	for _, resource := range requested.ResourceNames() {
