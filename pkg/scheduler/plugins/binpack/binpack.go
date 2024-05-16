@@ -224,9 +224,6 @@ func BinPackingScore(ssn *framework.Session, task *api.TaskInfo, node *api.NodeI
 	victims := ssn.Preemptable(task, preemptees)
 	for _, ti := range victims {
 		used = used.Sub(ti.Resreq)
-		//if ti.Resreq.LessEqual(used, api.Zero) {
-		//	used = used.Sub(ti.Resreq)
-		//}
 	}
 
 	for _, resource := range requested.ResourceNames() {
