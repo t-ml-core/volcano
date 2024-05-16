@@ -158,7 +158,7 @@ func (pp *proportionPlugin) enableTaskInProportion(info *api.TaskInfo) bool {
 		return false
 	}
 
-	if info.Pod == nil {
+	if info.Pod == nil || info.Pod.Spec.NodeSelector == nil {
 		return true
 	}
 
@@ -465,7 +465,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		rv := r.(*api.QueueInfo)
 
 		if !pp.queueOpts[lv.UID].preemption.Equal(pp.queueOpts[rv.UID].preemption, api.Zero) {
-			if pp.queueOpts[lv.UID].preemption.Less(pp.queueOpts[rv.UID].preemption, api.Zero) {
+			if pp.queueOpts[lv.UID].preemption.LessEqual(pp.queueOpts[rv.UID].preemption, api.Zero) {
 				return -1
 			}
 
