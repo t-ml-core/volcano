@@ -426,6 +426,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
 			}
 			attr.deserved.MinDimensionResource(attr.request, api.Zero)
+			attr.deserved.MinDimensionResource(attr.preemption, api.Zero)
 
 			// attr.requests or attr.realCapability can be less then guarantee,
 			// but queue can't deserve less resources than it has in guarantee
@@ -483,56 +484,54 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	})
 
-	/*
-		ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
-			if !pp.enableTaskInProportion(reclaimer) {
-				return reclaimees, util.Permit
+	ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		if !pp.enableTaskInProportion(reclaimer) {
+			return reclaimees, util.Permit
+		}
+
+		var victims []*api.TaskInfo
+		allocations := map[api.QueueID]*api.Resource{}
+
+		for _, reclaimee := range reclaimees {
+			job := ssn.Jobs[reclaimee.Job]
+			attr := pp.queueOpts[job.Queue]
+
+			if _, found := allocations[job.Queue]; !found {
+				allocations[job.Queue] = attr.allocated.Clone()
+			}
+			allocated := allocations[job.Queue]
+			if allocated.LessPartly(reclaimer.Resreq, api.Zero) {
+				klog.V(3).Infof("Failed to allocate resource for Task <%s/%s> in Queue <%s>, not enough resource.",
+					reclaimee.Namespace, reclaimee.Name, job.Queue)
+				continue
 			}
 
-			var victims []*api.TaskInfo
-			allocations := map[api.QueueID]*api.Resource{}
-
-			for _, reclaimee := range reclaimees {
-				job := ssn.Jobs[reclaimee.Job]
-				attr := pp.queueOpts[job.Queue]
-
-				if _, found := allocations[job.Queue]; !found {
-					allocations[job.Queue] = attr.allocated.Clone()
-				}
-				allocated := allocations[job.Queue]
-				if allocated.LessPartly(reclaimer.Resreq, api.Zero) {
-					klog.V(3).Infof("Failed to allocate resource for Task <%s/%s> in Queue <%s>, not enough resource.",
-						reclaimee.Namespace, reclaimee.Name, job.Queue)
-					continue
-				}
-
-				if !allocated.LessEqual(attr.deserved, api.Zero) {
-					allocated.Sub(reclaimee.Resreq)
-					victims = append(victims, reclaimee)
-				}
+			if !allocated.LessEqual(attr.deserved, api.Zero) {
+				allocated.Sub(reclaimee.Resreq)
+				victims = append(victims, reclaimee)
 			}
-			klog.V(4).Infof("Victims from proportion plugins are %+v", victims)
-			return victims, util.Permit
-		})
+		}
+		klog.V(4).Infof("Victims from proportion plugins are %+v", victims)
+		return victims, util.Permit
+	})
 
-		ssn.AddOverusedFn(pp.Name(), func(obj interface{}) (bool, *api.OverusedInfo) {
-			queue := obj.(*api.QueueInfo)
-			attr := pp.queueOpts[queue.UID]
+	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) (bool, *api.OverusedInfo) {
+		queue := obj.(*api.QueueInfo)
+		attr := pp.queueOpts[queue.UID]
 
-			overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
-			metrics.UpdateQueueOverused(attr.name, overused)
-			var res *api.OverusedInfo
-			if overused {
-				res = &api.OverusedInfo{}
-				res.Reason = string(vcv1beta1.NotEnoughResourcesInCluster)
-				res.Message = "deserved is less than allocated"
-				klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
-					queue.Name, attr.deserved, attr.allocated, attr.share)
-			}
+		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
+		metrics.UpdateQueueOverused(attr.name, overused)
+		var res *api.OverusedInfo
+		if overused {
+			res = &api.OverusedInfo{}
+			res.Reason = string(vcv1beta1.NotEnoughResourcesInCluster)
+			res.Message = "deserved is less than allocated"
+			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
+				queue.Name, attr.deserved, attr.allocated, attr.share)
+		}
 
-			return overused, res
-		})
-	*/
+		return overused, res
+	})
 
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		job, found := ssn.Jobs[candidate.Job]
@@ -557,55 +556,53 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return allocatable
 	})
 
-	/*
-		ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
-			job := obj.(*api.JobInfo)
-			queueID := job.Queue
-			attr := pp.queueOpts[queueID]
-			queue := ssn.Queues[queueID]
-			// If no capability is set, always enqueue the job.
-			if attr.realCapability == nil {
-				klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
-					queue.Name, job.Namespace, job.Name)
-				return util.Permit
+	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
+		job := obj.(*api.JobInfo)
+		queueID := job.Queue
+		attr := pp.queueOpts[queueID]
+		queue := ssn.Queues[queueID]
+		// If no capability is set, always enqueue the job.
+		if attr.realCapability == nil {
+			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
+				queue.Name, job.Namespace, job.Name)
+			return util.Permit
+		}
+
+		if job.PodGroup.Spec.MinResources == nil {
+			klog.V(4).Infof("job %s MinResources is null.", job.Name)
+			return util.Permit
+		}
+		minReq := job.GetMinResources()
+
+		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s> notAllocated: <%s>",
+			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String(), pp.totalNotAllocatedResources.String())
+
+		// Allow preemptable jobs to be inqueue over guaranteed resources
+		if job.Preemptable && minReq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
+			klog.V(4).Infof("job <%s> is preemptable, allow to Inqueue.", queue.Name)
+			return util.Permit
+		}
+
+		// The queue resource quota limit has not reached
+		r := minReq.Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
+		rr := attr.realCapability.Clone()
+
+		for name := range rr.ScalarResources {
+			if _, ok := r.ScalarResources[name]; !ok {
+				delete(rr.ScalarResources, name)
 			}
+		}
 
-			if job.PodGroup.Spec.MinResources == nil {
-				klog.V(4).Infof("job %s MinResources is null.", job.Name)
-				return util.Permit
-			}
-			minReq := job.GetMinResources()
-
-			klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s> notAllocated: <%s>",
-				job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String(), pp.totalNotAllocatedResources.String())
-
-			// Allow preemptable jobs to be inqueue over guaranteed resources
-			if job.Preemptable && minReq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
-				klog.V(4).Infof("job <%s> is preemptable, allow to Inqueue.", queue.Name)
-				return util.Permit
-			}
-
-			// The queue resource quota limit has not reached
-			r := minReq.Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
-			rr := attr.realCapability.Clone()
-
-			for name := range rr.ScalarResources {
-				if _, ok := r.ScalarResources[name]; !ok {
-					delete(rr.ScalarResources, name)
-				}
-			}
-
-			inqueue := r.LessEqual(rr, api.Infinity)
-			klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
-			if inqueue {
-				attr.inqueue.Add(job.GetMinResources())
-				return util.Permit
-			}
-			ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
-			ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.InternalError, "queue resource quota insufficient")
-			return util.Reject
-		})
-	*/
+		inqueue := r.LessEqual(rr, api.Infinity)
+		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
+		if inqueue {
+			attr.inqueue.Add(job.GetMinResources())
+			return util.Permit
+		}
+		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
+		ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.InternalError, "queue resource quota insufficient")
+		return util.Reject
+	})
 
 	// Register event handlers.
 	ssn.AddEventHandler(&framework.EventHandler{
