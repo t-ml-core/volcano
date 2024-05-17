@@ -453,7 +453,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
 		}
 
-		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
+		remaining.Add(decreasedDeserved).Sub(increasedDeserved)
 		klog.V(4).Infof("Remaining resource is  <%s>", remaining)
 		if remaining.IsEmpty() || reflect.DeepEqual(remaining, oldRemaining) {
 			klog.V(4).Infof("Exiting when remaining is empty or no queue has more resource request:  <%v>", remaining)
