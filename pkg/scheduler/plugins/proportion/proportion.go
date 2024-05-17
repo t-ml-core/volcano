@@ -425,7 +425,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			if attr.realCapability != nil {
 				attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
 			}
-			attr.deserved.MinDimensionResource(attr.preemption, api.Zero)
 			attr.deserved.MinDimensionResource(attr.request, api.Zero)
 
 			// attr.requests or attr.realCapability can be less then guarantee,
@@ -453,7 +452,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
 		}
 
-		remaining.Add(decreasedDeserved).Sub(increasedDeserved)
+		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
 		klog.V(4).Infof("Remaining resource is  <%s>", remaining)
 		if remaining.IsEmpty() || reflect.DeepEqual(remaining, oldRemaining) {
 			klog.V(4).Infof("Exiting when remaining is empty or no queue has more resource request:  <%v>", remaining)
@@ -516,21 +515,24 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) (bool, *api.OverusedInfo) {
-		queue := obj.(*api.QueueInfo)
-		attr := pp.queueOpts[queue.UID]
+		return false, nil
+		/*
+			queue := obj.(*api.QueueInfo)
+			attr := pp.queueOpts[queue.UID]
 
-		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
-		metrics.UpdateQueueOverused(attr.name, overused)
-		var res *api.OverusedInfo
-		if overused {
-			res = &api.OverusedInfo{}
-			res.Reason = string(vcv1beta1.NotEnoughResourcesInCluster)
-			res.Message = "deserved is less than allocated"
-			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
-				queue.Name, attr.deserved, attr.allocated, attr.share)
-		}
+			overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
+			metrics.UpdateQueueOverused(attr.name, overused)
+			var res *api.OverusedInfo
+			if overused {
+				res = &api.OverusedInfo{}
+				res.Reason = string(vcv1beta1.NotEnoughResourcesInCluster)
+				res.Message = "deserved is less than allocated"
+				klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
+					queue.Name, attr.deserved, attr.allocated, attr.share)
+			}
 
-		return overused, res
+			return overused, res
+		*/
 	})
 
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
