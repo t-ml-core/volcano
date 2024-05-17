@@ -140,7 +140,10 @@ func New(arguments framework.Arguments) framework.Plugin {
 		}
 	}
 
-	klog.V(5).Infof("%s: %v; %s: %v", ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys, ignoreNodeLabelsOpt, pp.ignoreNodeLabels)
+	klog.V(5).Infof("parsed proportion args %s: %v; %s: %v",
+		ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys,
+		ignoreNodeLabelsOpt, pp.ignoreNodeLabels,
+	)
 
 	return pp
 }
@@ -150,12 +153,30 @@ func (pp *proportionPlugin) Name() string {
 }
 
 func (pp *proportionPlugin) enableTaskInProportion(info *api.TaskInfo) bool {
-	if info.Pod == nil ||
-		info.Pod.Spec.Affinity == nil ||
+	if info.Pod == nil {
+		return true
+	}
+
+	for selectorName, selectorValue := range info.Pod.Spec.NodeSelector {
+		ignoreValues, ok := pp.ignoreNodeLabels[selectorName]
+		if !ok {
+			continue
+		}
+
+		for _, ignoreValue := range ignoreValues {
+			if selectorValue == ignoreValue {
+				klog.V(3).Infof("ignore task %s in proportion plugin by node selector %s", info.Name, selectorName)
+				return false
+			}
+		}
+	}
+
+	if info.Pod.Spec.Affinity == nil ||
 		info.Pod.Spec.Affinity.NodeAffinity == nil ||
 		info.Pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
 		return true
 	}
+
 	terms := info.Pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
 
 	// task has node affinity on ignore node
@@ -439,7 +460,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		rv := r.(*api.QueueInfo)
 
 		if !pp.queueOpts[lv.UID].preemption.Equal(pp.queueOpts[rv.UID].preemption, api.Zero) {
-			if pp.queueOpts[lv.UID].preemption.Less(pp.queueOpts[rv.UID].preemption, api.Zero) {
+			if pp.queueOpts[lv.UID].preemption.LessEqual(pp.queueOpts[rv.UID].preemption, api.Zero) {
 				return -1
 			}
 

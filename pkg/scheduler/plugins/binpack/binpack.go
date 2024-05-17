@@ -184,7 +184,7 @@ func (bp *binpackPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		binPackingScore := BinPackingScore(task, node, bp.weight)
+		binPackingScore := BinPackingScore(ssn, task, node, bp.weight)
 
 		klog.V(4).Infof("Binpack score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, binPackingScore)
 		return binPackingScore, nil
@@ -203,7 +203,7 @@ func (bp *binpackPlugin) OnSessionClose(ssn *framework.Session) {
 // Goals:
 // - Schedule Jobs using BestFit Policy using Resource Bin Packing Priority Function
 // - Reduce Fragmentation of scarce resources on the Cluster
-func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeight) float64 {
+func BinPackingScore(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo, weight priorityWeight) float64 {
 	score := 0.0
 	weightSum := 0
 	requested := task.Resreq
@@ -215,14 +215,19 @@ func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeig
 	// that it cannot place the task on the node
 	used := node.Used.Clone()
 	if !task.Preemptable {
+		var preemptees []*api.TaskInfo
 		for _, ti := range node.Tasks {
-			if !ti.Preemptable || ti.Status == api.Pipelined {
-				continue
+			if ti.Preemptable && api.PreemptableStatus(ti.Status) {
+				preemptees = append(preemptees, ti.Clone())
 			}
+		}
 
+		victims := ssn.Preemptable(task, preemptees)
+		for _, ti := range victims {
 			if ti.Resreq.LessEqual(used, api.Zero) {
 				used = used.Sub(ti.Resreq)
 			}
+			// used = used.Sub(ti.Resreq)
 		}
 	}
 
