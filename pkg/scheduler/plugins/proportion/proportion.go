@@ -425,8 +425,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			if attr.realCapability != nil {
 				attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
 			}
+			attr.deserved.MinDimensionResource(attr.preemption, api.Zero)
 			attr.deserved.MinDimensionResource(attr.request, api.Zero)
-			attr.deserved.SetMaxResource(attr.preemption)
 
 			// attr.requests or attr.realCapability can be less then guarantee,
 			// but queue can't deserve less resources than it has in guarantee
