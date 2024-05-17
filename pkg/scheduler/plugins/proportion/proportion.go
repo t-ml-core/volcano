@@ -536,6 +536,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			preemptable = job.Preemptable
 		}
 
+		// Allow allocation over guaranteed resources for preemptable jobs
 		if (preemptable && candidate.Resreq.LessEqual(pp.totalNotAllocatedResources, api.Zero)) || !pp.enableTaskInProportion(candidate) {
 			return true
 		}
