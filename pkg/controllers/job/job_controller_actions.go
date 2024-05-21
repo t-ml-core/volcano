@@ -716,6 +716,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 					return err
 				}
 			}
+			klog.V(2).Infof("set pending reason to podgroup %s: reason: NotProcessedByScheduler Action: controller", pg.Name)
 			return nil
 		}
 	}
