@@ -412,7 +412,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 					} else {
 						classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
 						calcPodStatus(pod, taskStatusCount)
-						klog.V(5).Infof("Created Task <%s> of Job <%s/%s>",
+						klog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
 							pod.Name, job.Namespace, job.Name)
 					}
 				}(pod)
