@@ -214,12 +214,15 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				break
 			}
 
-			var predicateNodeNames []string
-			for _, node := range predicateNodes {
-				predicateNodeNames = append(predicateNodeNames, node.Name)
+			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+
+			var predicateNodeNames []nodeInfo
+			for score, nodes := range nodeScores {
+				for _, node := range nodes {
+					predicateNodeNames = append(predicateNodeNames, nodeInfo{NodeName: node.Name, Score: score})
+				}
 			}
 
-			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 			klog.V(3).Infof("predicated nodes %v for task %s/%s", predicateNodeNames, task.Namespace, task.Name)
 
 			bestNode := ssn.BestNodeFn(task, nodeScores)
@@ -277,3 +280,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 }
 
 func (alloc *Action) UnInitialize() {}
+
+type nodeInfo struct {
+	NodeName string
+	Score    float64
+}
