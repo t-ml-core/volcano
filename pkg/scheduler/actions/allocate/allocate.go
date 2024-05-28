@@ -216,17 +216,20 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 
 			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
-			var predicateNodeNames []nodeInfo
+			var predicateNodeInfo []nodeInfo
 			for score, nodes := range nodeScores {
 				for _, node := range nodes {
-					predicateNodeNames = append(predicateNodeNames, nodeInfo{NodeName: node.Name, Score: score})
+					predicateNodeInfo = append(predicateNodeInfo, nodeInfo{
+						NodeName: node.Name,
+						Score:    score,
+					})
 				}
 			}
-			sort.Slice(predicateNodeNames, func(i, j int) bool {
-				return predicateNodeNames[i].Score < predicateNodeNames[j].Score
+			sort.Slice(predicateNodeInfo, func(i, j int) bool {
+				return predicateNodeInfo[i].Score > predicateNodeInfo[j].Score
 			})
 
-			klog.V(3).Infof("predicated nodes %v for task %s/%s", predicateNodeNames, task.Namespace, task.Name)
+			klog.V(3).Infof("predicated nodes %v for task %s/%s", predicateNodeInfo, task.Namespace, task.Name)
 
 			bestNode := ssn.BestNodeFn(task, nodeScores)
 			if bestNode == nil {

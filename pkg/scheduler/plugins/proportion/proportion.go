@@ -19,6 +19,7 @@ package proportion
 import (
 	"math"
 	"reflect"
+	"sort"
 
 	"k8s.io/klog/v2"
 
@@ -600,6 +601,44 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
 		ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.InternalError, "queue resource quota insufficient")
 		return util.Reject
+	})
+
+	ssn.AddBestNodeFn(pp.Name(), func(task *api.TaskInfo, nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
+		if task.Preemptable {
+			return nil
+		}
+
+		var maxScore float64
+		var scores []float64
+		for score := range nodeScores {
+			scores = append(scores, score)
+			if score > maxScore {
+				maxScore = score
+			}
+		}
+
+		sort.Slice(scores, func(i, j int) bool {
+			return scores[i] > scores[j]
+		})
+
+		if maxScore == 0 {
+			maxScore = 1
+		}
+
+		delta := 0.1
+		for _, score := range scores {
+			if 1.0-score/maxScore > delta {
+				continue
+			}
+
+			for _, node := range nodeScores[score] {
+				if task.InitResreq.LessEqual(node.Idle, api.Zero) {
+					return node
+				}
+			}
+		}
+
+		return nil
 	})
 
 	// Register event handlers.
