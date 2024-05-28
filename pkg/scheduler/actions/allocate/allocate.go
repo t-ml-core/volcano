@@ -18,6 +18,7 @@ package allocate
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -215,13 +216,15 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 
 			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
-
 			var predicateNodeNames []nodeInfo
 			for score, nodes := range nodeScores {
 				for _, node := range nodes {
 					predicateNodeNames = append(predicateNodeNames, nodeInfo{NodeName: node.Name, Score: score})
 				}
 			}
+			sort.Slice(predicateNodeNames, func(i, j int) bool {
+				return predicateNodeNames[i].Score < predicateNodeNames[j].Score
+			})
 
 			klog.V(3).Infof("predicated nodes %v for task %s/%s", predicateNodeNames, task.Namespace, task.Name)
 
