@@ -634,9 +634,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		maxScore = scores[0]
 
-		delta := 0.1
 		for _, score := range scores {
-			if 1.0-score/maxScore > delta {
+			if 1.0-score/maxScore > pp.allowedOffsetFromBestNodeScore {
 				continue
 			}
 
