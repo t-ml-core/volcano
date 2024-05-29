@@ -18,6 +18,7 @@ package proportion
 
 import (
 	"math"
+	"math/rand"
 	"reflect"
 	"sort"
 
@@ -40,6 +41,8 @@ const (
 
 	ignoreNodeTaintKeysOpt = "ignore.node.taint.keys"
 	ignoreNodeLabelsOpt    = "ignore.node.labels"
+
+	allowedOffsetFromBestNodeScoreOpt = "allowed.offset.from.best.node.score"
 )
 
 type proportionPlugin struct {
@@ -50,6 +53,8 @@ type proportionPlugin struct {
 
 	ignoreTaintKeys  []string
 	ignoreNodeLabels map[string][]string
+
+	allowedOffsetFromBestNodeScore float64
 
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
@@ -80,6 +85,7 @@ type queueAttr struct {
    - plugins:
      - name: proportion
        arguments:
+         allowed.offset.from.best.node.score: 0.1
          ignore.node.taint.keys:
             - node.kubernetes.io/unschedulable
             - ...
@@ -99,8 +105,9 @@ func New(arguments framework.Arguments) framework.Plugin {
 		totalNotAllocatedResources: api.EmptyResource(),
 		queueOpts:                  map[api.QueueID]*queueAttr{},
 
-		ignoreTaintKeys:  []string{},
-		ignoreNodeLabels: map[string][]string{},
+		ignoreTaintKeys:                []string{},
+		ignoreNodeLabels:               map[string][]string{},
+		allowedOffsetFromBestNodeScore: 0.1,
 
 		pluginArguments: arguments,
 	}
@@ -141,9 +148,12 @@ func New(arguments framework.Arguments) framework.Plugin {
 		}
 	}
 
-	klog.V(5).Infof("parsed proportion args %s: %v; %s: %v",
+	arguments.GetFloat64(&pp.allowedOffsetFromBestNodeScore, allowedOffsetFromBestNodeScoreOpt)
+
+	klog.V(5).Infof("parsed proportion args %s: %v; %s: %v; %s: %v",
 		ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys,
 		ignoreNodeLabelsOpt, pp.ignoreNodeLabels,
+		allowedOffsetFromBestNodeScoreOpt, pp.allowedOffsetFromBestNodeScore,
 	)
 
 	return pp
@@ -608,22 +618,21 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			return nil
 		}
 
-		var maxScore float64
 		var scores []float64
 		for score := range nodeScores {
 			scores = append(scores, score)
-			if score > maxScore {
-				maxScore = score
-			}
 		}
 
 		sort.Slice(scores, func(i, j int) bool {
 			return scores[i] > scores[j]
 		})
 
-		if maxScore == 0 {
-			maxScore = 1
+		maxScore := 1.0
+		if len(scores) == 0 {
+			return nil
 		}
+
+		maxScore = scores[0]
 
 		delta := 0.1
 		for _, score := range scores {
@@ -631,10 +640,15 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				continue
 			}
 
+			var bestNodes []*api.NodeInfo
 			for _, node := range nodeScores[score] {
 				if task.InitResreq.LessEqual(node.Idle, api.Zero) {
-					return node
+					bestNodes = append(bestNodes, node)
 				}
+			}
+
+			if len(bestNodes) > 0 {
+				return bestNodes[rand.Intn(len(bestNodes))]
 			}
 		}
 
