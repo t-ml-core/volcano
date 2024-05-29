@@ -627,12 +627,14 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			return scores[i] > scores[j]
 		})
 
-		maxScore := 1.0
 		if len(scores) == 0 {
 			return nil
 		}
 
-		maxScore = scores[0]
+		maxScore := scores[0]
+		if maxScore == 0 {
+			maxScore = 1
+		}
 
 		for _, score := range scores {
 			if 1.0-score/maxScore > pp.allowedDeltaFromBestNodeScore {
