@@ -18,6 +18,7 @@ package allocate
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -214,13 +215,21 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				break
 			}
 
-			var predicateNodeNames []string
-			for _, node := range predicateNodes {
-				predicateNodeNames = append(predicateNodeNames, node.Name)
-			}
-
 			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
-			klog.V(3).Infof("predicated nodes %v for task %s/%s", predicateNodeNames, task.Namespace, task.Name)
+			var predicateNodeInfo []nodeInfo
+			for score, nodes := range nodeScores {
+				for _, node := range nodes {
+					predicateNodeInfo = append(predicateNodeInfo, nodeInfo{
+						NodeName: node.Name,
+						Score:    score,
+					})
+				}
+			}
+			sort.Slice(predicateNodeInfo, func(i, j int) bool {
+				return predicateNodeInfo[i].Score > predicateNodeInfo[j].Score
+			})
+
+			klog.V(3).Infof("predicated nodes %v for task %s/%s", predicateNodeInfo, task.Namespace, task.Name)
 
 			bestNode := ssn.BestNodeFn(task, nodeScores)
 			if bestNode == nil {
@@ -277,3 +286,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 }
 
 func (alloc *Action) UnInitialize() {}
+
+type nodeInfo struct {
+	NodeName string
+	Score    float64
+}

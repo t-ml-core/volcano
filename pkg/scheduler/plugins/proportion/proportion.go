@@ -18,7 +18,9 @@ package proportion
 
 import (
 	"math"
+	"math/rand"
 	"reflect"
+	"sort"
 
 	"k8s.io/klog/v2"
 
@@ -39,6 +41,8 @@ const (
 
 	ignoreNodeTaintKeysOpt = "ignore.node.taint.keys"
 	ignoreNodeLabelsOpt    = "ignore.node.labels"
+
+	allowedDeltaFromBestNodeScoreOpt = "allowed.delta.from.best.node.score"
 )
 
 type proportionPlugin struct {
@@ -49,6 +53,8 @@ type proportionPlugin struct {
 
 	ignoreTaintKeys  []string
 	ignoreNodeLabels map[string][]string
+
+	allowedDeltaFromBestNodeScore float64
 
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
@@ -79,6 +85,7 @@ type queueAttr struct {
    - plugins:
      - name: proportion
        arguments:
+         allowed.delta.from.best.node.score: 0.1
          ignore.node.taint.keys:
             - node.kubernetes.io/unschedulable
             - ...
@@ -98,8 +105,9 @@ func New(arguments framework.Arguments) framework.Plugin {
 		totalNotAllocatedResources: api.EmptyResource(),
 		queueOpts:                  map[api.QueueID]*queueAttr{},
 
-		ignoreTaintKeys:  []string{},
-		ignoreNodeLabels: map[string][]string{},
+		ignoreTaintKeys:               []string{},
+		ignoreNodeLabels:              map[string][]string{},
+		allowedDeltaFromBestNodeScore: 0.1,
 
 		pluginArguments: arguments,
 	}
@@ -140,9 +148,12 @@ func New(arguments framework.Arguments) framework.Plugin {
 		}
 	}
 
-	klog.V(5).Infof("parsed proportion args %s: %v; %s: %v",
+	arguments.GetFloat64(&pp.allowedDeltaFromBestNodeScore, allowedDeltaFromBestNodeScoreOpt)
+
+	klog.V(5).Infof("parsed proportion args %s: %v; %s: %v; %s: %v",
 		ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys,
 		ignoreNodeLabelsOpt, pp.ignoreNodeLabels,
+		allowedDeltaFromBestNodeScoreOpt, pp.allowedDeltaFromBestNodeScore,
 	)
 
 	return pp
@@ -600,6 +611,49 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
 		ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.InternalError, "queue resource quota insufficient")
 		return util.Reject
+	})
+
+	ssn.AddBestNodeFn(pp.Name(), func(task *api.TaskInfo, nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
+		if task.Preemptable {
+			return nil
+		}
+
+		var scores []float64
+		for score := range nodeScores {
+			scores = append(scores, score)
+		}
+
+		sort.Slice(scores, func(i, j int) bool {
+			return scores[i] > scores[j]
+		})
+
+		if len(scores) == 0 {
+			return nil
+		}
+
+		maxScore := scores[0]
+		if maxScore == 0 {
+			maxScore = 1
+		}
+
+		for _, score := range scores {
+			if 1.0-score/maxScore > pp.allowedDeltaFromBestNodeScore {
+				continue
+			}
+
+			var bestNodes []*api.NodeInfo
+			for _, node := range nodeScores[score] {
+				if task.InitResreq.LessEqual(node.Idle, api.Zero) {
+					bestNodes = append(bestNodes, node)
+				}
+			}
+
+			if len(bestNodes) > 0 {
+				return bestNodes[rand.Intn(len(bestNodes))]
+			}
+		}
+
+		return nil
 	})
 
 	// Register event handlers.
