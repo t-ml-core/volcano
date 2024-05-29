@@ -42,7 +42,7 @@ const (
 	ignoreNodeTaintKeysOpt = "ignore.node.taint.keys"
 	ignoreNodeLabelsOpt    = "ignore.node.labels"
 
-	allowedOffsetFromBestNodeScoreOpt = "allowed.offset.from.best.node.score"
+	allowedDeltaFromBestNodeScoreOpt = "allowed.delta.from.best.node.score"
 )
 
 type proportionPlugin struct {
@@ -54,7 +54,7 @@ type proportionPlugin struct {
 	ignoreTaintKeys  []string
 	ignoreNodeLabels map[string][]string
 
-	allowedOffsetFromBestNodeScore float64
+	allowedDeltaFromBestNodeScore float64
 
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
@@ -85,7 +85,7 @@ type queueAttr struct {
    - plugins:
      - name: proportion
        arguments:
-         allowed.offset.from.best.node.score: 0.1
+         allowed.delta.from.best.node.score: 0.1
          ignore.node.taint.keys:
             - node.kubernetes.io/unschedulable
             - ...
@@ -105,9 +105,9 @@ func New(arguments framework.Arguments) framework.Plugin {
 		totalNotAllocatedResources: api.EmptyResource(),
 		queueOpts:                  map[api.QueueID]*queueAttr{},
 
-		ignoreTaintKeys:                []string{},
-		ignoreNodeLabels:               map[string][]string{},
-		allowedOffsetFromBestNodeScore: 0.1,
+		ignoreTaintKeys:               []string{},
+		ignoreNodeLabels:              map[string][]string{},
+		allowedDeltaFromBestNodeScore: 0.1,
 
 		pluginArguments: arguments,
 	}
@@ -148,12 +148,12 @@ func New(arguments framework.Arguments) framework.Plugin {
 		}
 	}
 
-	arguments.GetFloat64(&pp.allowedOffsetFromBestNodeScore, allowedOffsetFromBestNodeScoreOpt)
+	arguments.GetFloat64(&pp.allowedDeltaFromBestNodeScore, allowedDeltaFromBestNodeScoreOpt)
 
 	klog.V(5).Infof("parsed proportion args %s: %v; %s: %v; %s: %v",
 		ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys,
 		ignoreNodeLabelsOpt, pp.ignoreNodeLabels,
-		allowedOffsetFromBestNodeScoreOpt, pp.allowedOffsetFromBestNodeScore,
+		allowedDeltaFromBestNodeScoreOpt, pp.allowedDeltaFromBestNodeScore,
 	)
 
 	return pp
@@ -635,7 +635,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		maxScore = scores[0]
 
 		for _, score := range scores {
-			if 1.0-score/maxScore > pp.allowedOffsetFromBestNodeScore {
+			if 1.0-score/maxScore > pp.allowedDeltaFromBestNodeScore {
 				continue
 			}
 
