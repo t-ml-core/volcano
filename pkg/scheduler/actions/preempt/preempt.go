@@ -326,8 +326,8 @@ func preempt(
 
 		// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
 		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
-			klog.V(3).Infof("Preemptor's queue is allocatable and Task <%s/%s> reclaimed enough resources, trying to pipeline",
-				preemptor.Namespace, preemptor.Name)
+			klog.V(3).Infof("Preemptor's queue is allocatable and Task <%s/%s> reclaimed enough resources, trying to pipeline to node %s",
+				preemptor.Namespace, preemptor.Name, node.Name)
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
