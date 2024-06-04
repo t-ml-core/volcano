@@ -287,10 +287,11 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		// if the status change then reason will be deleted by the updateStatus function
 		if pg.Status.Phase == scheduling.PodGroupInqueue || pg.Status.Phase == scheduling.PodGroupPending {
 			job.Status.State.PendingReasonInfo = batch.PendingReasonInfo{
-				Action:  pg.Status.PendingReasonInfo.Action,
-				Plugin:  pg.Status.PendingReasonInfo.Plugin,
-				Reason:  batch.PendingReason(pg.Status.PendingReasonInfo.Reason),
-				Message: pg.Status.PendingReasonInfo.Message,
+				Action:             pg.Status.PendingReasonInfo.Action,
+				Plugin:             pg.Status.PendingReasonInfo.Plugin,
+				Reason:             batch.PendingReason(pg.Status.PendingReasonInfo.Reason),
+				Message:            pg.Status.PendingReasonInfo.Message,
+				LastTransitionTime: pg.Status.PendingReasonInfo.LastTransitionTime,
 			}
 		}
 		for _, condition := range pg.Status.Conditions {
@@ -401,6 +402,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			for _, pod := range podToCreateEachTask {
 				go func(pod *v1.Pod) {
 					defer waitCreationGroup.Done()
+					// TODO: log сюда
 					newPod, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 					if err != nil && !apierrors.IsAlreadyExists(err) {
 						// Failed to create Pod, waitCreationGroup a moment and then create it again
@@ -703,8 +705,9 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				},
 				Status: scheduling.PodGroupStatus{
 					PendingReasonInfo: scheduling.PendingReasonInfo{
-						Action: "controller",
-						Reason: scheduling.NotProcessedByScheduler,
+						Action:             "controller",
+						Reason:             scheduling.NotProcessedByScheduler,
+						LastTransitionTime: metav1.Now(),
 					},
 				},
 			}

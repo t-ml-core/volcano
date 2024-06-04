@@ -3458,6 +3458,17 @@ spec:
                   type: string
                 message:
                   type: string
+                pendingReasonInfo:
+                  properties:
+                    action:
+                      type: string
+                    message:
+                      type: string
+                    plugin:
+                      type: string
+                    reason:
+                      type: string
+                  type: object
                 phase:
                   type: string
                 reason:
