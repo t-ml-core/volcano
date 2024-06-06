@@ -548,7 +548,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// Allow allocation over guaranteed resources for preemptable jobs
-		if (preemptable && candidate.Resreq.LessEqual(pp.totalNotAllocatedResources, api.Zero)) || !pp.enableTaskInProportion(candidate) {
+		if preemptable || !pp.enableTaskInProportion(candidate) {
 			return true
 		}
 
@@ -587,30 +587,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String(), pp.totalNotAllocatedResources.String())
 
 		// Allow preemptable jobs to be inqueue over guaranteed resources
-		if job.Preemptable && minReq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
-			klog.V(4).Infof("job <%s> is preemptable, allow to Inqueue.", queue.Name)
-			return util.Permit
+		if job.Preemptable && pp.totalNotAllocatedResources.LessEqual(minReq, api.Zero) {
+			ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.NotEnoughResourcesInCluster, "not enough resources in cluster")
+			return util.Reject
 		}
 
-		// The queue resource quota limit has not reached
-		r := minReq.Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
-		rr := attr.realCapability.Clone()
-
-		for name := range rr.ScalarResources {
-			if _, ok := r.ScalarResources[name]; !ok {
-				delete(rr.ScalarResources, name)
-			}
-		}
-
-		inqueue := r.LessEqual(rr, api.Infinity)
-		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
-		if inqueue {
-			attr.inqueue.Add(job.GetMinResources())
-			return util.Permit
-		}
-		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
-		ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.InternalError, "queue resource quota insufficient")
-		return util.Reject
+		// todo: тут надо сделать норм проверку для не Preemptable с учетом тасок которые они могут вытеснить
+		return util.Permit
 	})
 
 	ssn.AddBestNodeFn(pp.Name(), func(task *api.TaskInfo, nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
