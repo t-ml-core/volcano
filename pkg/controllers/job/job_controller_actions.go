@@ -402,7 +402,6 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			for _, pod := range podToCreateEachTask {
 				go func(pod *v1.Pod) {
 					defer waitCreationGroup.Done()
-					// TODO: log сюда
 					newPod, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 					if err != nil && !apierrors.IsAlreadyExists(err) {
 						// Failed to create Pod, waitCreationGroup a moment and then create it again
