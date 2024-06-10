@@ -24,8 +24,8 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
-
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/pytorch"
@@ -138,6 +138,11 @@ func createPatch(job *v1alpha1.Job) ([]byte, error) {
 	if patchPlugins != nil {
 		patch = append(patch, *patchPlugins)
 	}
+	patchPendingReasonInfo := patchPendingReasonInfo()
+	if patchPendingReasonInfo != nil {
+		patch = append(patch, *patchPendingReasonInfo)
+	}
+
 	return json.Marshal(patch)
 }
 
@@ -252,5 +257,19 @@ func patchDefaultPlugins(job *v1alpha1.Job) *patchOperation {
 		Op:    "replace",
 		Path:  "/spec/plugins",
 		Value: plugins,
+	}
+}
+
+func patchPendingReasonInfo() *patchOperation {
+	pendingReasonInfo := v1alpha1.PendingReasonInfo{
+		Reason:             v1alpha1.NotProcessedByController,
+		Message:            "set by mutate job admission",
+		LastTransitionTime: metav1.Now(),
+	}
+
+	return &patchOperation{
+		Op:    "replace",
+		Path:  "/status/state/pendingReasonInfo",
+		Value: pendingReasonInfo,
 	}
 }
