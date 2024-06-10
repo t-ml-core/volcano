@@ -3690,6 +3690,9 @@ spec:
                     properties:
                       action:
                         type: string
+                      lastTransitionTime:
+                        format: date-time
+                        type: string
                       message:
                         type: string
                       plugin:
@@ -4261,6 +4264,10 @@ spec:
                 properties:
                   action:
                     description: Name of the action that rejected the pg
+                    type: string
+                  lastTransitionTime:
+                    description: Time when the pending reason have been updated
+                    format: date-time
                     type: string
                   message:
                     description: Human readable message with detailed description
