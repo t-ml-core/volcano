@@ -3462,6 +3462,9 @@ spec:
                   properties:
                     action:
                       type: string
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
                     message:
                       type: string
                     plugin:

@@ -141,6 +141,10 @@ spec:
                   action:
                     description: Name of the action that rejected the pg
                     type: string
+                  lastTransitionTime:
+                    description: Time when the pending reason have been updated
+                    format: date-time
+                    type: string
                   message:
                     description: Human readable message with detailed description
                       why this Reason was set
