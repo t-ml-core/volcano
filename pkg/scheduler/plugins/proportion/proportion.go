@@ -581,13 +581,41 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String(), pp.totalNotAllocatedResources.String())
 
 		// Allow preemptable jobs to be inqueue over guaranteed resources
-		if job.Preemptable && pp.totalNotAllocatedResources.LessEqual(minReq, api.Zero) {
+		if job.Preemptable {
+
+			if minReq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
+				return util.Permit
+			}
+
 			ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.NotEnoughResourcesInCluster, "not enough resources in cluster")
 			return util.Reject
 		}
 
-		// todo: тут надо сделать норм проверку для не Preemptable с учетом тасок которые они могут вытеснить
-		return util.Permit
+		if minReq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
+			return util.Permit
+		}
+
+		totalNotAllocatedAfterPreemptResources := api.EmptyResource()
+		for _, task := range job.Tasks {
+			if !pp.enableTaskInProportion(task) {
+				return util.Permit
+			}
+
+			for _, node := range ssn.Nodes {
+				if !pp.enableNodeInProportion(node) {
+					continue
+				}
+
+				idleAfterPreempt := node.IdleAfterPreempt(task, ssn.Preemptable)
+				totalNotAllocatedAfterPreemptResources.Add(idleAfterPreempt)
+			}
+		}
+
+		if minReq.LessEqual(totalNotAllocatedAfterPreemptResources, api.Zero) {
+			return util.Permit
+		}
+
+		return util.Reject
 	})
 
 	ssn.AddBestNodeFn(pp.Name(), func(task *api.TaskInfo, nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
