@@ -554,11 +554,17 @@ func (ji *JobInfo) SetPendingReason(action, plugin string, reason scheduling.Pen
 		metrics.IncreasePodGroupPendingReason(string(reason))
 		klog.V(2).Infof("set pending reason to podgroup %s: reason: %s message: %s, action: %s, plugin: %s", ji.Name, reason, message, action, plugin)
 	}
-	ji.PodGroup.Status.PendingReasonInfo = scheduling.PendingReasonInfo{
+	newPendingReasonInfo := scheduling.PendingReasonInfo{
 		Action:  action,
 		Plugin:  plugin,
 		Reason:  reason,
 		Message: message,
+		// Don't want to compare time here
+		LastTransitionTime: ji.PodGroup.Status.PendingReasonInfo.LastTransitionTime,
+	}
+	if newPendingReasonInfo != ji.PodGroup.Status.PendingReasonInfo {
+		newPendingReasonInfo.LastTransitionTime = metav1.Now()
+		ji.PodGroup.Status.PendingReasonInfo = newPendingReasonInfo
 	}
 	return nil
 }
