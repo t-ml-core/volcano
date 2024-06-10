@@ -580,17 +580,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s> notAllocated: <%s>",
 			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String(), pp.totalNotAllocatedResources.String())
 
-		// Allow preemptable jobs to be inqueue over guaranteed resources
-		if job.Preemptable {
-
-			if minReq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
-				return util.Permit
-			}
-
-			ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.NotEnoughResourcesInCluster, "not enough resources in cluster")
-			return util.Reject
-		}
-
 		if minReq.LessEqual(pp.totalNotAllocatedResources, api.Zero) {
 			return util.Permit
 		}
@@ -615,6 +604,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Permit
 		}
 
+		ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.NotEnoughResourcesInCluster, "not enough resources in cluster")
 		return util.Reject
 	})
 
