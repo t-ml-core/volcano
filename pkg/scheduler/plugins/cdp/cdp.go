@@ -39,14 +39,33 @@ const (
 	// cdp plugin here is to ensure vcjob's pods cannot be preempted within cooldown protection conditions.
 	// currently cdp plugin only support cooldown time protection.
 	PluginName = "cdp"
+
+	cooldownTimeForPreemptedJobOpt = "cooldown-time-for-preempted-job"
 )
 
 type CooldownProtectionPlugin struct {
+	cooldownTimeForPreemptedJob time.Duration
 }
 
 // New return CooldownProtectionPlugin
 func New(arguments framework.Arguments) framework.Plugin {
-	return &CooldownProtectionPlugin{}
+	plugin := &CooldownProtectionPlugin{cooldownTimeForPreemptedJob: 5 * time.Minute}
+	if cooldownTimeForPreemptedJobI, ok := arguments[cooldownTimeForPreemptedJobOpt]; ok {
+		if cooldownTimeForPreemptedJobS, ok := cooldownTimeForPreemptedJobI.(string); ok {
+			cooldownTimeForPreemptedJob, err := time.ParseDuration(cooldownTimeForPreemptedJobS)
+			if err != nil {
+				klog.Warningf("invalid time duration %s=%s", cooldownTimeForPreemptedJobOpt, cooldownTimeForPreemptedJobS)
+			} else {
+				plugin.cooldownTimeForPreemptedJob = cooldownTimeForPreemptedJob
+			}
+		}
+	}
+
+	klog.V(5).Infof("parsed cdp args %s: %v",
+		cooldownTimeForPreemptedJobOpt, plugin.cooldownTimeForPreemptedJob,
+	)
+
+	return plugin
 }
 
 // Name implements framework.Plugin
@@ -119,10 +138,8 @@ func (sp *CooldownProtectionPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Permit
 		}
 
-		// todo: move to config
-		if pendingReasonInfo.LastTransitionTime.Add(5 * time.Minute).After(time.Now()) {
-			// todo: set and check pending reason
-			klog.V(2).Infof("reject job %s by cdp plugin", job.Name)
+		if pendingReasonInfo.LastTransitionTime.Add(sp.cooldownTimeForPreemptedJob).After(time.Now()) {
+			klog.V(3).Infof("did not enqueue job %s due to cdp plugin's decision", job.Name)
 			return util.Reject
 		}
 
