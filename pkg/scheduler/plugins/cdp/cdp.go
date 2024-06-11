@@ -22,6 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -38,14 +39,33 @@ const (
 	// cdp plugin here is to ensure vcjob's pods cannot be preempted within cooldown protection conditions.
 	// currently cdp plugin only support cooldown time protection.
 	PluginName = "cdp"
+
+	cooldownTimeForPreemptedJobOpt = "cooldown-time-for-preempted-job"
 )
 
 type CooldownProtectionPlugin struct {
+	cooldownTimeForPreemptedJob time.Duration
 }
 
 // New return CooldownProtectionPlugin
 func New(arguments framework.Arguments) framework.Plugin {
-	return &CooldownProtectionPlugin{}
+	plugin := &CooldownProtectionPlugin{cooldownTimeForPreemptedJob: time.Minute}
+	if cooldownTimeForPreemptedJobI, ok := arguments[cooldownTimeForPreemptedJobOpt]; ok {
+		if cooldownTimeForPreemptedJobS, ok := cooldownTimeForPreemptedJobI.(string); ok {
+			cooldownTimeForPreemptedJob, err := time.ParseDuration(cooldownTimeForPreemptedJobS)
+			if err != nil {
+				klog.Warningf("invalid time duration %s=%s", cooldownTimeForPreemptedJobOpt, cooldownTimeForPreemptedJobS)
+			} else {
+				plugin.cooldownTimeForPreemptedJob = cooldownTimeForPreemptedJob
+			}
+		}
+	}
+
+	klog.V(5).Infof("parsed cdp args %s: %v",
+		cooldownTimeForPreemptedJobOpt, plugin.cooldownTimeForPreemptedJob,
+	)
+
+	return plugin
 }
 
 // Name implements framework.Plugin
@@ -106,6 +126,27 @@ func (sp *CooldownProtectionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	klog.V(4).Info("plugin cdp session open")
 	ssn.AddPreemptableFn(sp.Name(), preemptableFn)
+
+	// after eviction, the pod is removed and pod-group status is changed to pending
+	// and goes through the entire scheduling chain again
+	ssn.AddJobEnqueueableFn(sp.Name(), func(obj interface{}) int {
+		job := obj.(*api.JobInfo)
+		if job.PodGroup == nil {
+			return util.Permit
+		}
+
+		pendingReasonInfo := job.PodGroup.Status.PendingReasonInfo
+		if pendingReasonInfo.Reason != scheduling.JobPreempted {
+			return util.Permit
+		}
+
+		if pendingReasonInfo.LastTransitionTime.Add(sp.cooldownTimeForPreemptedJob).After(time.Now()) {
+			klog.V(3).Infof("did not enqueue job %s due to cdp plugin's decision", job.Name)
+			return util.Reject
+		}
+
+		return util.Permit
+	})
 }
 
 // OnSessionClose implements framework.Plugin
