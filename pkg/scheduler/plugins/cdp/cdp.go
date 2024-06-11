@@ -121,6 +121,8 @@ func (sp *CooldownProtectionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// todo: move to config
 		if pendingReasonInfo.LastTransitionTime.Add(5 * time.Minute).After(time.Now()) {
+			// todo: set and check pending reason
+			klog.V(2).Infof("reject job %s by cdp plugin", job.Name)
 			return util.Reject
 		}
 
