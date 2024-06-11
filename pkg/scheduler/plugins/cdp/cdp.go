@@ -22,6 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -106,6 +107,25 @@ func (sp *CooldownProtectionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	klog.V(4).Info("plugin cdp session open")
 	ssn.AddPreemptableFn(sp.Name(), preemptableFn)
+
+	ssn.AddJobEnqueueableFn(sp.Name(), func(obj interface{}) int {
+		job := obj.(*api.JobInfo)
+		if job.PodGroup == nil {
+			return util.Permit
+		}
+
+		pendingReasonInfo := job.PodGroup.Status.PendingReasonInfo
+		if pendingReasonInfo.Reason != scheduling.JobPreempted {
+			return util.Permit
+		}
+
+		// todo: move to config
+		if pendingReasonInfo.LastTransitionTime.Add(5 * time.Minute).After(time.Now()) {
+			return util.Reject
+		}
+
+		return util.Permit
+	})
 }
 
 // OnSessionClose implements framework.Plugin
