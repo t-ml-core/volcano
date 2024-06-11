@@ -595,6 +595,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 					continue
 				}
 
+				// todo: тут могут быть учтены одни и те же ресурсы, надо проверить
 				idleAfterPreempt := node.IdleAfterPreempt(task, ssn.Preemptable)
 				totalNotAllocatedAfterPreemptResources.Add(idleAfterPreempt)
 			}
