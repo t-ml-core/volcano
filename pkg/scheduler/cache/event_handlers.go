@@ -51,9 +51,9 @@ import (
 
 var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
 
-func isTerminated(status schedulingapi.TaskStatus) bool {
-	return status == schedulingapi.Succeeded || status == schedulingapi.Failed
-}
+//func isTerminated(status schedulingapi.TaskStatus) bool {
+//	return status == schedulingapi.Succeeded || status == schedulingapi.Failed
+//}
 
 // getOrCreateJob will return corresponding Job for pi if it exists, or it will create a Job and return it if
 // pi.Pod.Spec.SchedulerName is same as volcano scheduler's name, otherwise it will return nil.
