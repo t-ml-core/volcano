@@ -49,7 +49,7 @@ type CooldownProtectionPlugin struct {
 
 // New return CooldownProtectionPlugin
 func New(arguments framework.Arguments) framework.Plugin {
-	plugin := &CooldownProtectionPlugin{cooldownTimeForPreemptedJob: 5 * time.Minute}
+	plugin := &CooldownProtectionPlugin{cooldownTimeForPreemptedJob: time.Minute}
 	if cooldownTimeForPreemptedJobI, ok := arguments[cooldownTimeForPreemptedJobOpt]; ok {
 		if cooldownTimeForPreemptedJobS, ok := cooldownTimeForPreemptedJobI.(string); ok {
 			cooldownTimeForPreemptedJob, err := time.ParseDuration(cooldownTimeForPreemptedJobS)
@@ -127,6 +127,8 @@ func (sp *CooldownProtectionPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(4).Info("plugin cdp session open")
 	ssn.AddPreemptableFn(sp.Name(), preemptableFn)
 
+	// after eviction, the pod is removed and pod-group status is changed to pending
+	// and goes through the entire scheduling chain again
 	ssn.AddJobEnqueueableFn(sp.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		if job.PodGroup == nil {
