@@ -64,7 +64,7 @@ var service = &router.AdmissionService{
 					Rule: whv1.Rule{
 						APIGroups:   []string{"batch.volcano.sh"},
 						APIVersions: []string{"v1alpha1"},
-						Resources:   []string{"jobs"},
+						Resources:   []string{"jobs", "jobs/status"},
 					},
 				},
 			},
@@ -270,17 +270,17 @@ func patchPendingReasonInfo() []patchOperation {
 	// We have to create the whole resources in the path /status/state/pendingReasonInfo
 	// as it is specified in the RFC 6902 https://www.rfc-editor.org/rfc/rfc6902.html#section-4.1
 	return []patchOperation{
-		patchOperation{
+		{
 			Op:    "add",
 			Path:  "/status",
 			Value: v1alpha1.JobStatus{},
 		},
-		patchOperation{
+		{
 			Op:    "add",
 			Path:  "/status/state",
 			Value: v1alpha1.JobState{},
 		},
-		patchOperation{
+		{
 			Op:    "add",
 			Path:  "/status/state/pendingReasonInfo",
 			Value: pendingReasonInfo,
