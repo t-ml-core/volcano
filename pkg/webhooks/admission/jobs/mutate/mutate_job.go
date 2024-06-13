@@ -140,7 +140,7 @@ func createPatch(job *v1alpha1.Job) ([]byte, error) {
 	}
 	patchPendingReasonInfo := patchPendingReasonInfo()
 	if patchPendingReasonInfo != nil {
-		patch = append(patch, patchPendingReasonInfo...)
+		patch = append(patch, *patchPendingReasonInfo)
 	}
 
 	return json.Marshal(patch)
@@ -260,30 +260,20 @@ func patchDefaultPlugins(job *v1alpha1.Job) *patchOperation {
 	}
 }
 
-func patchPendingReasonInfo() []patchOperation {
-	pendingReasonInfo := v1alpha1.PendingReasonInfo{
-		Reason:             v1alpha1.NotProcessedByController,
-		Message:            "set by mutate job admission",
-		LastTransitionTime: metav1.Now(),
-	}
-
+func patchPendingReasonInfo() *patchOperation {
 	// We have to create the whole resources in the path /status/state/pendingReasonInfo
 	// as it is specified in the RFC 6902 https://www.rfc-editor.org/rfc/rfc6902.html#section-4.1
-	return []patchOperation{
-		{
-			Op:    "add",
-			Path:  "/status",
-			Value: v1alpha1.JobStatus{},
-		},
-		{
-			Op:    "add",
-			Path:  "/status/state",
-			Value: v1alpha1.JobState{},
-		},
-		{
-			Op:    "add",
-			Path:  "/status/state/pendingReasonInfo",
-			Value: pendingReasonInfo,
+	return &patchOperation{
+		Op:   "add",
+		Path: "/status",
+		Value: v1alpha1.JobStatus{
+			State: v1alpha1.JobState{
+				PendingReasonInfo: v1alpha1.PendingReasonInfo{
+					Reason:             v1alpha1.NotProcessedByController,
+					Message:            "set by mutate job admission",
+					LastTransitionTime: metav1.Now(),
+				},
+			},
 		},
 	}
 }
