@@ -35,8 +35,8 @@ const (
 )
 
 type quotasPlugin struct {
-	totalResource  *api.Resource
-	totalGuarantee *api.Resource
+	totalQuotaResource *api.Resource
+	totalGuarantee     *api.Resource
 
 	queueOpts map[api.QueueID]*queueAttr
 
@@ -52,7 +52,6 @@ type queueAttr struct {
 	weight  int32
 
 	allocated  *api.Resource
-	request    *api.Resource
 	preemption *api.Resource
 
 	capability *api.Resource
@@ -78,9 +77,9 @@ type queueAttr struct {
 // New return quotas action
 func New(arguments framework.Arguments) framework.Plugin {
 	pp := &quotasPlugin{
-		totalResource:  api.EmptyResource(),
-		totalGuarantee: api.EmptyResource(),
-		queueOpts:      map[api.QueueID]*queueAttr{},
+		totalQuotaResource: api.EmptyResource(),
+		totalGuarantee:     api.EmptyResource(),
+		queueOpts:          map[api.QueueID]*queueAttr{},
 
 		ignoreTaintKeys:               []string{},
 		ignoreNodeLabels:              map[string][]string{},
@@ -134,17 +133,17 @@ func New(arguments framework.Arguments) framework.Plugin {
 	return pp
 }
 
-func (pp *quotasPlugin) Name() string {
+func (p *quotasPlugin) Name() string {
 	return PluginName
 }
 
-func (pp *quotasPlugin) enableTaskInQuotas(info *api.TaskInfo) bool {
+func (p *quotasPlugin) enableTaskInQuotas(info *api.TaskInfo) bool {
 	if info.Pod == nil {
 		return true
 	}
 
 	for selectorName, selectorValue := range info.Pod.Spec.NodeSelector {
-		ignoreValues, ok := pp.ignoreNodeLabels[selectorName]
+		ignoreValues, ok := p.ignoreNodeLabels[selectorName]
 		if !ok {
 			continue
 		}
@@ -172,7 +171,7 @@ func (pp *quotasPlugin) enableTaskInQuotas(info *api.TaskInfo) bool {
 				continue
 			}
 
-			ignoreValues, ok := pp.ignoreNodeLabels[expression.Key]
+			ignoreValues, ok := p.ignoreNodeLabels[expression.Key]
 			if !ok {
 				continue
 			}
@@ -191,13 +190,13 @@ func (pp *quotasPlugin) enableTaskInQuotas(info *api.TaskInfo) bool {
 	return true
 }
 
-func (pp *quotasPlugin) enableNodeInQuotas(node *api.NodeInfo) bool {
+func (p *quotasPlugin) enableNodeInQuotas(node *api.NodeInfo) bool {
 	if !node.Ready() {
 		return false
 	}
 
 	for _, taint := range node.Node.Spec.Taints {
-		for _, ignoreTaintKey := range pp.ignoreTaintKeys {
+		for _, ignoreTaintKey := range p.ignoreTaintKeys {
 			if taint.Key == ignoreTaintKey {
 				klog.V(3).Infof("ignore node %s in quotas plugin by taint %s", node.Name, taint.Key)
 				return false
@@ -206,7 +205,7 @@ func (pp *quotasPlugin) enableNodeInQuotas(node *api.NodeInfo) bool {
 	}
 
 	for name, value := range node.Node.Labels {
-		ignoreValues, ok := pp.ignoreNodeLabels[name]
+		ignoreValues, ok := p.ignoreNodeLabels[name]
 		if !ok {
 			continue
 		}
@@ -222,11 +221,43 @@ func (pp *quotasPlugin) enableNodeInQuotas(node *api.NodeInfo) bool {
 	return true
 }
 
-func (pp *quotasPlugin) calculateTotalResources() {
+func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
+	for _, node := range ssn.Nodes {
+		if p.enableNodeInQuotas(node) {
+			p.totalQuotaResource.Add(node.Allocatable)
+		}
+	}
+	klog.V(4).Infof("The total resource in quotas plugin <%v>, in cluster <%v>", p.totalQuotaResource, ssn.TotalResource)
+
+	for _, queue := range ssn.Queues {
+		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
+			continue
+		}
+		guarantee := api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+		p.totalGuarantee.Add(guarantee)
+	}
+	klog.V(4).Infof("The total guarantee resource is <%v>", p.totalGuarantee)
+
+	for _, job := range ssn.Jobs {
+		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
+		if _, found := p.queueOpts[job.Queue]; !found {
+			queue := ssn.Queues[job.Queue]
+			attr := &queueAttr{
+				queueID: queue.UID,
+				name:    queue.Name,
+				weight:  queue.Weight,
+
+				allocated:  api.EmptyResource(),
+				preemption: api.EmptyResource(),
+
+				capability: api.EmptyResource(),
+				guarantee:  api.EmptyResource(),
+			}
+			p.queueOpts[job.Queue] = attr
+		}
+	}
+
 }
 
-func (pp *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
-}
-
-func (pp *quotasPlugin) OnSessionClose(ssn *framework.Session) {
+func (p *quotasPlugin) OnSessionClose(ssn *framework.Session) {
 }
