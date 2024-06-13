@@ -439,7 +439,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 
 	if ni.Node != nil {
 		switch ti.Status {
-		case Releasing, Succeeded, Failed:
+		case Releasing:
 			ni.allocateIdleResource(ti)
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
