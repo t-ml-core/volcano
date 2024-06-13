@@ -221,6 +221,22 @@ func (p *quotasPlugin) enableNodeInQuotas(node *api.NodeInfo) bool {
 	return true
 }
 
+func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
+	attr := &queueAttr{
+		queueID: queue.UID,
+		name:    queue.Name,
+		weight:  queue.Weight,
+
+		allocated:  api.EmptyResource(),
+		preemption: api.EmptyResource(),
+
+		capability: api.EmptyResource(),
+		guarantee:  api.EmptyResource(),
+	}
+
+	return attr
+}
+
 func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 	for _, node := range ssn.Nodes {
 		if p.enableNodeInQuotas(node) {
@@ -240,21 +256,13 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	for _, job := range ssn.Jobs {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
-		if _, found := p.queueOpts[job.Queue]; !found {
+		attr, found := p.queueOpts[job.Queue]
+		if !found {
 			queue := ssn.Queues[job.Queue]
-			attr := &queueAttr{
-				queueID: queue.UID,
-				name:    queue.Name,
-				weight:  queue.Weight,
-
-				allocated:  api.EmptyResource(),
-				preemption: api.EmptyResource(),
-
-				capability: api.EmptyResource(),
-				guarantee:  api.EmptyResource(),
-			}
-			p.queueOpts[job.Queue] = attr
+			attr = p.createQueueAttr(queue)
 		}
+
+		p.queueOpts[job.Queue] = attr
 	}
 
 }
