@@ -240,6 +240,7 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 		preemption: api.EmptyResource(),
 
 		guarantee: api.EmptyResource(),
+		limit:     api.EmptyResource(),
 	}
 
 	attr.limit.MilliCPU = math.MaxFloat64
