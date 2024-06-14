@@ -23,7 +23,6 @@ import (
 	"math/rand"
 	"sort"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
@@ -56,7 +55,6 @@ type queueAttr struct {
 	weight  int32
 
 	allocated  *api.Resource
-	requested  *api.Resource
 	preemption *api.Resource
 
 	limit     *api.Resource
@@ -237,39 +235,25 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 		weight:  queue.Weight,
 
 		allocated:  api.EmptyResource(),
-		requested:  api.EmptyResource(),
 		preemption: api.EmptyResource(),
 
 		guarantee: api.EmptyResource(),
-		limit:     api.EmptyResource(),
 	}
+
+	attr.limit.MilliCPU = math.MaxFloat64
+	attr.limit.Memory = math.MaxFloat64
 
 	if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
 		attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
 	}
 
 	if len(queue.Queue.Spec.Capability) != 0 {
-		attr.limit = api.NewResource(queue.Queue.Spec.Capability)
-		if attr.limit.MilliCPU <= 0 {
-			attr.limit.MilliCPU = math.MaxFloat64
-		}
-		if attr.limit.Memory <= 0 {
-			attr.limit.Memory = math.MaxFloat64
-		}
-		for k, v := range attr.limit.ScalarResources {
-			if v <= 0 {
-				attr.limit.ScalarResources[k] = math.MaxFloat64
-			}
-		}
+		queueLimit := api.NewResource(queue.Queue.Spec.Capability)
+		attr.limit = attr.limit.MinDimensionResource(queueLimit, api.Infinity)
 	}
 
-	if p.totalGuarantee.LessEqual(p.totalQuotaResource, api.Zero) {
-		realLimit := p.totalQuotaResource.Clone().Add(attr.guarantee).Sub(p.totalGuarantee)
-		if !attr.limit.IsEmpty() {
-			realLimit.MinDimensionResource(attr.limit, api.Infinity)
-		}
-		attr.limit = realLimit
-	}
+	realLimit := p.totalQuotaResource.Clone().Add(attr.guarantee).SubWithoutAssert(p.totalGuarantee)
+	attr.limit = attr.limit.MinDimensionResource(realLimit, api.Infinity)
 
 	return attr
 }
@@ -309,12 +293,8 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 					continue
 				}
 
-				// todo: may be requested is not need
 				if api.AllocatedStatus(status) {
 					attr.allocated.Add(task.Resreq)
-					attr.requested.Add(task.Resreq)
-				} else if status == api.Pending {
-					attr.requested.Add(task.Resreq)
 				}
 			}
 		}
@@ -323,7 +303,35 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	ssn.AddJobEnqueueableFn(p.Name(), func(obj any) int {
-		return util.Permit
+		job := obj.(*api.JobInfo)
+		attr := p.queueOpts[job.Queue]
+		queue := ssn.Queues[job.Queue]
+
+		if attr.limit.IsEmpty() {
+			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
+				queue.Name, job.Namespace, job.Name)
+			return util.Permit
+		}
+
+		if job.PodGroup.Spec.MinResources == nil {
+			klog.V(4).Infof("Job %s MinResources is null.", job.Name)
+			return util.Permit
+		}
+
+		for _, task := range job.Tasks {
+			if !p.enableTaskInQuotas(task) {
+				return util.Permit
+			}
+		}
+
+		minResources := job.GetMinResources()
+		free, _ := attr.limit.Diff(attr.allocated, api.Zero)
+		if minResources.LessEqual(free, api.Zero) {
+			return util.Permit
+		}
+
+		ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "job's MinResources is greater than limit")
+		return util.Reject
 	})
 
 	ssn.AddAllocatableFn(p.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
@@ -333,19 +341,19 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		attr := p.queueOpts[queue.UID]
 		free, _ := attr.limit.Diff(attr.allocated, api.Zero)
-		if !candidate.Resreq.LessEqual(free, api.Zero) {
-			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
-				queue.Name, attr.limit, attr.allocated, candidate.Name, candidate.Resreq)
-
-			job, found := ssn.Jobs[candidate.Job]
-			if found {
-				ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "resreq is greater than limit")
-			}
-
-			return false
+		if candidate.Resreq.LessEqual(free, api.Zero) {
+			return true
 		}
 
-		return true
+		klog.V(3).Infof("Queue <%v>: limit <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
+			queue.Name, attr.limit, attr.allocated, candidate.Name, candidate.Resreq)
+
+		job, found := ssn.Jobs[candidate.Job]
+		if found {
+			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "task's resreq is greater than limit")
+		}
+
+		return false
 	})
 
 	ssn.AddQueueOrderFn(p.Name(), func(l, r any) int {
