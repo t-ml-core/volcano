@@ -17,13 +17,15 @@ limitations under the License.
 package quotas
 
 import (
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"math"
-
-	v1 "k8s.io/api/core/v1"
+	"math/rand"
+	"sort"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 const (
@@ -53,6 +55,7 @@ type queueAttr struct {
 	weight  int32
 
 	allocated  *api.Resource
+	requested  *api.Resource
 	preemption *api.Resource
 
 	limit     *api.Resource
@@ -139,6 +142,10 @@ func (p *quotasPlugin) Name() string {
 }
 
 func (p *quotasPlugin) enableTaskInQuotas(info *api.TaskInfo) bool {
+	if info.Preemptable {
+		return false
+	}
+
 	if info.Pod == nil {
 		return true
 	}
@@ -229,6 +236,7 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 		weight:  queue.Weight,
 
 		allocated:  api.EmptyResource(),
+		requested:  api.EmptyResource(),
 		preemption: api.EmptyResource(),
 
 		guarantee: api.EmptyResource(),
@@ -256,9 +264,7 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 
 	if p.totalGuarantee.LessEqual(p.totalQuotaResource, api.Zero) {
 		realLimit := p.totalQuotaResource.Clone().Add(attr.guarantee).Sub(p.totalGuarantee)
-		if attr.limit.IsEmpty() {
-			attr.limit = realLimit
-		} else {
+		if !attr.limit.IsEmpty() {
 			realLimit.MinDimensionResource(attr.limit, api.Infinity)
 		}
 		attr.limit = realLimit
@@ -292,8 +298,110 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr = p.createQueueAttr(queue)
 		}
 
+		for status, tasks := range job.TaskStatusIndex {
+			for _, task := range tasks {
+				if task.Preemptable {
+					attr.preemption.Add(task.Resreq)
+				}
+
+				if !p.enableTaskInQuotas(task) {
+					continue
+				}
+
+				// todo: may be requested is not need
+				if api.AllocatedStatus(status) {
+					attr.allocated.Add(task.Resreq)
+					attr.requested.Add(task.Resreq)
+				} else if status == api.Pending {
+					attr.requested.Add(task.Resreq)
+				}
+			}
+		}
+
 		p.queueOpts[job.Queue] = attr
 	}
+
+	ssn.AddJobEnqueueableFn(p.Name(), func(obj any) int {
+		return util.Permit
+	})
+
+	ssn.AddAllocatableFn(p.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		return true
+	})
+
+	ssn.AddQueueOrderFn(p.Name(), func(l, r any) int {
+		return 1
+	})
+
+	ssn.AddBestNodeFn(p.Name(), func(task *api.TaskInfo, nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
+		if task.Preemptable {
+			return nil
+		}
+
+		var scores []float64
+		for score := range nodeScores {
+			scores = append(scores, score)
+		}
+
+		sort.Slice(scores, func(i, j int) bool {
+			return scores[i] > scores[j]
+		})
+
+		if len(scores) == 0 {
+			return nil
+		}
+
+		maxScore := scores[0]
+		if maxScore == 0 {
+			maxScore = 1
+		}
+
+		for _, score := range scores {
+			if 1.0-score/maxScore > p.allowedDeltaFromBestNodeScore {
+				continue
+			}
+
+			var bestNodes []*api.NodeInfo
+			for _, node := range nodeScores[score] {
+				if task.InitResreq.LessEqual(node.Idle, api.Zero) {
+					bestNodes = append(bestNodes, node)
+				}
+			}
+
+			if len(bestNodes) > 0 {
+				return bestNodes[rand.Intn(len(bestNodes))]
+			}
+		}
+
+		return nil
+	})
+
+	ssn.AddEventHandler(&framework.EventHandler{
+		AllocateFunc: func(event *framework.Event) {
+			if !p.enableTaskInQuotas(event.Task) {
+				return
+			}
+
+			job := ssn.Jobs[event.Task.Job]
+			attr := p.queueOpts[job.Queue]
+			attr.allocated.Add(event.Task.Resreq)
+
+			klog.V(4).Infof("Quotas AllocateFunc: task <%v/%v>, resreq <%v>",
+				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
+		},
+		DeallocateFunc: func(event *framework.Event) {
+			if !p.enableTaskInQuotas(event.Task) {
+				return
+			}
+
+			job := ssn.Jobs[event.Task.Job]
+			attr := p.queueOpts[job.Queue]
+			attr.allocated.Sub(event.Task.Resreq)
+
+			klog.V(4).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>",
+				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
+		},
+	})
 
 }
 
