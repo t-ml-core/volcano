@@ -18,6 +18,7 @@ package quotas
 
 import (
 	"k8s.io/klog/v2"
+	"math"
 
 	v1 "k8s.io/api/core/v1"
 
@@ -54,8 +55,8 @@ type queueAttr struct {
 	allocated  *api.Resource
 	preemption *api.Resource
 
-	capability *api.Resource
-	guarantee  *api.Resource
+	limit     *api.Resource
+	guarantee *api.Resource
 }
 
 /*
@@ -230,8 +231,37 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 		allocated:  api.EmptyResource(),
 		preemption: api.EmptyResource(),
 
-		capability: api.EmptyResource(),
-		guarantee:  api.EmptyResource(),
+		guarantee: api.EmptyResource(),
+		limit:     api.EmptyResource(),
+	}
+
+	if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
+		attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+	}
+
+	if len(queue.Queue.Spec.Capability) != 0 {
+		attr.limit = api.NewResource(queue.Queue.Spec.Capability)
+		if attr.limit.MilliCPU <= 0 {
+			attr.limit.MilliCPU = math.MaxFloat64
+		}
+		if attr.limit.Memory <= 0 {
+			attr.limit.Memory = math.MaxFloat64
+		}
+		for k, v := range attr.limit.ScalarResources {
+			if v <= 0 {
+				attr.limit.ScalarResources[k] = math.MaxFloat64
+			}
+		}
+	}
+
+	if p.totalGuarantee.LessEqual(p.totalQuotaResource, api.Zero) {
+		realLimit := p.totalQuotaResource.Clone().Add(attr.guarantee).Sub(p.totalGuarantee)
+		if attr.limit.IsEmpty() {
+			attr.limit = realLimit
+		} else {
+			realLimit.MinDimensionResource(attr.limit, api.Infinity)
+		}
+		attr.limit = realLimit
 	}
 
 	return attr
