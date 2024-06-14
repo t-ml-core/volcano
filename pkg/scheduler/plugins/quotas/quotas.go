@@ -17,11 +17,13 @@ limitations under the License.
 package quotas
 
 import (
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
 	"math"
 	"math/rand"
 	"sort"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
+
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -440,7 +442,6 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
 		},
 	})
-
 }
 
 func (p *quotasPlugin) OnSessionClose(ssn *framework.Session) {

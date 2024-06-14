@@ -72,7 +72,6 @@ func getLocalMetrics() int {
 
 	client := &http.Client{}
 	req, err := http.NewRequest(method, url, nil)
-
 	if err != nil {
 		return data
 	}
