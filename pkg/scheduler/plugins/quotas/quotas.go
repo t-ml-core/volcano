@@ -22,6 +22,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -326,11 +327,40 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddAllocatableFn(p.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		if !p.enableTaskInQuotas(candidate) {
+			return true
+		}
+
+		attr := p.queueOpts[queue.UID]
+		free, _ := attr.limit.Diff(attr.allocated, api.Zero)
+		if !candidate.Resreq.LessEqual(free, api.Zero) {
+			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
+				queue.Name, attr.limit, attr.allocated, candidate.Name, candidate.Resreq)
+
+			job, found := ssn.Jobs[candidate.Job]
+			if found {
+				ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "resreq is greater than limit")
+			}
+
+			return false
+		}
+
 		return true
 	})
 
 	ssn.AddQueueOrderFn(p.Name(), func(l, r any) int {
-		return 1
+		lv := l.(*api.QueueInfo)
+		rv := r.(*api.QueueInfo)
+
+		if !p.queueOpts[lv.UID].preemption.Equal(p.queueOpts[rv.UID].preemption, api.Zero) {
+			if p.queueOpts[lv.UID].preemption.LessEqual(p.queueOpts[rv.UID].preemption, api.Zero) {
+				return -1
+			}
+
+			return 1
+		}
+
+		return 0
 	})
 
 	ssn.AddBestNodeFn(p.Name(), func(task *api.TaskInfo, nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {

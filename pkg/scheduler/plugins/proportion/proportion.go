@@ -609,7 +609,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Permit
 		}
 		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
-		ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.InternalError, "queue resource quota insufficient")
+		ssn.SetJobPendingReason(job, pp.Name(), vcv1beta1.NotEnoughResourcesInQuota, "queue resource quota insufficient")
 		return util.Reject
 	})
 
