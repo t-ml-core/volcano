@@ -40,8 +40,11 @@ const (
 )
 
 type quotasPlugin struct {
-	totalQuotaResource *api.Resource
+	totalQuotableResource     *api.Resource
+	totalFreeQuotableResource *api.Resource
+
 	totalGuarantee     *api.Resource
+	totalFreeGuarantee *api.Resource
 
 	queueOpts map[api.QueueID]*queueAttr
 
@@ -82,9 +85,13 @@ type queueAttr struct {
 // New return quotas action
 func New(arguments framework.Arguments) framework.Plugin {
 	pp := &quotasPlugin{
-		totalQuotaResource: api.EmptyResource(),
+		totalQuotableResource:     api.EmptyResource(),
+		totalFreeQuotableResource: api.EmptyResource(),
+
 		totalGuarantee:     api.EmptyResource(),
-		queueOpts:          map[api.QueueID]*queueAttr{},
+		totalFreeGuarantee: api.EmptyResource(),
+
+		queueOpts: map[api.QueueID]*queueAttr{},
 
 		ignoreTaintKeys:               []string{},
 		ignoreNodeLabels:              map[string][]string{},
@@ -255,7 +262,7 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 		attr.limit = attr.limit.MinDimensionResource(queueLimit, api.Infinity)
 	}
 
-	realLimit := p.totalQuotaResource.Clone().Add(attr.guarantee).SubWithoutAssert(p.totalGuarantee)
+	realLimit := p.totalQuotableResource.Clone().Add(attr.guarantee).SubWithoutAssert(p.totalGuarantee)
 	attr.limit = attr.limit.MinDimensionResource(realLimit, api.Infinity)
 
 	return attr
@@ -264,10 +271,13 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 	for _, node := range ssn.Nodes {
 		if p.enableNodeInQuotas(node) {
-			p.totalQuotaResource.Add(node.Allocatable)
+			p.totalQuotableResource.Add(node.Allocatable)
+			p.totalFreeQuotableResource.Add(node.Idle)
 		}
 	}
-	klog.V(4).Infof("The total resource in quotas plugin <%v>, in cluster <%v>", p.totalQuotaResource, ssn.TotalResource)
+
+	klog.V(4).Infof("The total resource in quotas plugin <%v>, in cluster <%v>, free <%v>",
+		p.totalQuotableResource, ssn.TotalResource, p.totalFreeQuotableResource)
 
 	for _, queue := range ssn.Queues {
 		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
@@ -276,7 +286,6 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		guarantee := api.NewResource(queue.Queue.Spec.Guarantee.Resource)
 		p.totalGuarantee.Add(guarantee)
 	}
-	klog.V(4).Infof("The total guarantee resource is <%v>", p.totalGuarantee)
 
 	for _, job := range ssn.Jobs {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
@@ -305,6 +314,23 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		p.queueOpts[job.Queue] = attr
 	}
 
+	for _, queue := range ssn.Queues {
+		attr, found := p.queueOpts[queue.UID]
+		if !found {
+			attr = p.createQueueAttr(queue)
+			p.queueOpts[queue.UID] = attr
+		}
+
+		if attr.allocated.LessEqual(attr.guarantee, api.Infinity) {
+			freeGuarantee := attr.guarantee.Clone()
+			freeGuarantee.SetMaxResource(attr.allocated)
+			freeGuarantee = freeGuarantee.Sub(attr.allocated)
+			p.totalFreeGuarantee.Add(freeGuarantee)
+		}
+	}
+
+	klog.V(4).Infof("The total guarantee resource is <%v>, free <%v>", p.totalGuarantee, p.totalFreeGuarantee)
+
 	ssn.AddJobEnqueueableFn(p.Name(), func(obj any) int {
 		job := obj.(*api.JobInfo)
 		attr := p.queueOpts[job.Queue]
@@ -328,8 +354,36 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		minResources := job.GetMinResources()
-		free, _ := attr.limit.Diff(attr.allocated, api.Zero)
-		if minResources.LessEqual(free, api.Zero) {
+		incrAllocated := attr.allocated.Clone().Add(minResources)
+		if incrAllocated.LessEqual(attr.limit, api.Infinity) {
+			if incrAllocated.LessEqual(attr.guarantee, api.Infinity) {
+				return util.Permit
+			}
+
+			freeGuarantee := attr.guarantee.Clone()
+			freeGuarantee.SetMaxResource(incrAllocated)
+			freeGuarantee = freeGuarantee.SubWithoutAssert(incrAllocated)
+
+			totalFreeQuotableResource := p.totalFreeQuotableResource.Clone().Add(freeGuarantee)
+
+			if p.totalFreeGuarantee.LessEqual(totalFreeQuotableResource, api.Zero) {
+				return util.Permit
+			}
+
+			// totalFreeGuarantee - freeGuaranteeForCurrQueue <= totalFreeQuotableResource
+
+			//if p.totalFreeQuotableResource.LessEqual(minResources, api.Infinity) {
+			//}
+
+			if p.totalFreeGuarantee.LessEqual(minResources, api.Zero) {
+
+			}
+
+			p.totalGuarantee.Clone().Sub(attr.guarantee).Add(minResources)
+
+			// todo: проверить, что totalIdle - minResources больше чем
+			// p.totalGuarantee - (attr.guarantee) -
+
 			return util.Permit
 		}
 
@@ -419,13 +473,19 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
+			// todo: calculate preemtable
+
 			if !p.enableTaskInQuotas(event.Task) {
 				return
 			}
 
 			job := ssn.Jobs[event.Task.Job]
 			attr := p.queueOpts[job.Queue]
+
 			attr.allocated.Add(event.Task.Resreq)
+			p.totalFreeQuotableResource.SubWithoutAssert(event.Task.Resreq)
+			// todo: if queue free guarantee that give it and calculate totalFreeGuarantee
+			// p.totalFreeGuarantee.SubWithoutAssert(event.Task.Resreq)
 
 			klog.V(4).Infof("Quotas AllocateFunc: task <%v/%v>, resreq <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
@@ -437,7 +497,9 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			job := ssn.Jobs[event.Task.Job]
 			attr := p.queueOpts[job.Queue]
+
 			attr.allocated.Sub(event.Task.Resreq)
+			p.totalFreeQuotableResource.Add(event.Task.Resreq)
 
 			klog.V(4).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
