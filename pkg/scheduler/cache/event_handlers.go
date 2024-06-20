@@ -235,7 +235,7 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 		}
 
 		node := sc.Nodes[pi.NodeName]
-		if !isTerminated(pi.Status) {
+		if !isTerminated(pi) {
 			if err := node.AddTask(pi); err != nil {
 				return err
 			}
