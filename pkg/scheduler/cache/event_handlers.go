@@ -61,10 +61,8 @@ func isTerminated(task *schedulingapi.TaskInfo) bool {
 
 	var terminatedTime time.Time
 	for _, status := range task.Pod.Status.ContainerStatuses {
-		if status.State.Terminated != nil {
-			if status.State.Terminated.FinishedAt.After(terminatedTime) {
-				terminatedTime = status.State.Terminated.FinishedAt.Time
-			}
+		if status.State.Terminated != nil && status.State.Terminated.FinishedAt.After(terminatedTime) {
+			terminatedTime = status.State.Terminated.FinishedAt.Time
 		}
 	}
 
