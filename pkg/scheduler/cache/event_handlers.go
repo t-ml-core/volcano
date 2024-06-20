@@ -22,6 +22,7 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -51,9 +52,28 @@ import (
 
 var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
 
-//func isTerminated(status schedulingapi.TaskStatus) bool {
-//	return status == schedulingapi.Succeeded || status == schedulingapi.Failed
-//}
+var waitResourcesAfterTerminatedTimeout = 5 * time.Minute
+
+func isTerminated(task *schedulingapi.TaskInfo) bool {
+	if task.Status != schedulingapi.Succeeded && task.Status != schedulingapi.Failed {
+		return false
+	}
+
+	var terminatedTime time.Time
+	for _, status := range task.Pod.Status.ContainerStatuses {
+		if status.State.Terminated != nil {
+			if status.State.Terminated.FinishedAt.After(terminatedTime) {
+				terminatedTime = status.State.Terminated.FinishedAt.Time
+			}
+		}
+	}
+
+	if terminatedTime.IsZero() || terminatedTime.Add(waitResourcesAfterTerminatedTimeout).Before(time.Now()) {
+		return false
+	}
+
+	return true
+}
 
 // getOrCreateJob will return corresponding Job for pi if it exists, or it will create a Job and return it if
 // pi.Pod.Spec.SchedulerName is same as volcano scheduler's name, otherwise it will return nil.
@@ -215,13 +235,13 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 		}
 
 		node := sc.Nodes[pi.NodeName]
-		//if !isTerminated(pi.Status) {
-		if err := node.AddTask(pi); err != nil {
-			return err
+		if !isTerminated(pi.Status) {
+			if err := node.AddTask(pi); err != nil {
+				return err
+			}
+		} else {
+			klog.V(4).Infof("Pod <%v/%v> is in status %s.", pi.Namespace, pi.Name, pi.Status.String())
 		}
-		//} else {
-		//klog.V(4).Infof("Pod <%v/%v> is in status %s.", pi.Namespace, pi.Name, pi.Status.String())
-		//}
 	}
 
 	job := sc.getOrCreateJob(pi)
