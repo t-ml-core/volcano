@@ -66,6 +66,11 @@ type queueAttr struct {
 	guarantee *api.Resource
 }
 
+func (q *queueAttr) GetFreeGuarantee() *api.Resource {
+	free, _ := q.guarantee.Diff(q.allocated, api.Zero)
+	return free
+}
+
 /*
    - plugins:
      - name: quotas
@@ -238,6 +243,8 @@ func (p *quotasPlugin) enableNodeInQuotas(node *api.NodeInfo) bool {
 }
 
 func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
+	// assert.Assertf(!p.totalGuarantee.IsEmpty(), "total guarantee must be not empty")
+
 	attr := &queueAttr{
 		queueID: queue.UID,
 		name:    queue.Name,
@@ -275,9 +282,6 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			p.totalFreeQuotableResource.Add(node.Idle)
 		}
 	}
-
-	klog.V(4).Infof("The total resource in quotas plugin <%v>, in cluster <%v>, free <%v>",
-		p.totalQuotableResource, ssn.TotalResource, p.totalFreeQuotableResource)
 
 	for _, queue := range ssn.Queues {
 		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
@@ -321,15 +325,15 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			p.queueOpts[queue.UID] = attr
 		}
 
-		if attr.allocated.LessEqual(attr.guarantee, api.Infinity) {
-			freeGuarantee := attr.guarantee.Clone()
-			freeGuarantee.SetMaxResource(attr.allocated)
-			freeGuarantee = freeGuarantee.Sub(attr.allocated)
-			p.totalFreeGuarantee.Add(freeGuarantee)
-		}
+		freeGuarantee := attr.GetFreeGuarantee()
+		p.totalFreeGuarantee.Add(freeGuarantee)
+		klog.V(4).Infof("free guarantee %v for queue %s", freeGuarantee, queue.Name)
 	}
 
-	klog.V(4).Infof("The total guarantee resource is <%v>, free <%v>", p.totalGuarantee, p.totalFreeGuarantee)
+	klog.V(3).Infof("The total resource in quotas plugin <%v>, in cluster <%v>,"+
+		"free <%v>, total guarantee resource is <%v>, total free guarantee resource is <%v>",
+		p.totalQuotableResource, ssn.TotalResource, p.totalFreeQuotableResource, p.totalGuarantee, p.totalFreeGuarantee,
+	)
 
 	ssn.AddJobEnqueueableFn(p.Name(), func(obj any) int {
 		job := obj.(*api.JobInfo)
@@ -360,7 +364,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				return util.Permit
 			}
 
-			freeGuarantee := attr.guarantee.Clone()
+			freeGuarantee := attr.GetFreeGuarantee()
 			freeGuarantee.SetMaxResource(incrAllocated)
 			freeGuarantee = freeGuarantee.SubWithoutAssert(incrAllocated)
 
