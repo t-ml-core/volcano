@@ -240,7 +240,7 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 				return err
 			}
 		} else {
-			klog.V(4).Infof("Skip pod <%v/%v> in status %s.", pi.Namespace, pi.Name, pi.Status.String())
+			klog.V(4).Infof("Skip pod <%v/%v> in status %s on node %s", pi.Namespace, pi.Name, pi.Status.String(), node.Name)
 		}
 	}
 
