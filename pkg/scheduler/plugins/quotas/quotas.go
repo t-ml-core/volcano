@@ -66,8 +66,13 @@ type queueAttr struct {
 	guarantee *api.Resource
 }
 
-func (q *queueAttr) GetFreeGuarantee() *api.Resource {
-	free, _ := q.guarantee.Diff(q.allocated, api.Zero)
+func (q *queueAttr) GetFreeGuarantee(adds ...*api.Resource) *api.Resource {
+	newAllocated := q.allocated.Clone()
+	for _, res := range adds {
+		newAllocated = newAllocated.Add(res)
+	}
+
+	free, _ := q.guarantee.Diff(newAllocated, api.Zero)
 	return free
 }
 
@@ -364,15 +369,14 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				return util.Permit
 			}
 
-			freeGuarantee := attr.GetFreeGuarantee()
-			freeGuarantee.SetMaxResource(incrAllocated)
-			freeGuarantee = freeGuarantee.SubWithoutAssert(incrAllocated)
+			//freeDescGuarantee := attr.GetFreeGuarantee(minResources)
 
-			totalFreeQuotableResource := p.totalFreeQuotableResource.Clone().Add(freeGuarantee)
+			// todo
+			//totalFreeQuotableResource := p.totalFreeQuotableResource.Clone().Add(freeGuarantee)
 
-			if p.totalFreeGuarantee.LessEqual(totalFreeQuotableResource, api.Zero) {
-				return util.Permit
-			}
+			//if p.totalFreeGuarantee.LessEqual(totalFreeQuotableResource, api.Zero) {
+			//	return util.Permit
+			//}
 
 			// totalFreeGuarantee - freeGuaranteeForCurrQueue <= totalFreeQuotableResource
 
@@ -486,15 +490,18 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := p.queueOpts[job.Queue]
 
+			p.totalFreeGuarantee.Sub(attr.GetFreeGuarantee())
 			attr.allocated.Add(event.Task.Resreq)
+			p.totalFreeGuarantee.Add(attr.GetFreeGuarantee())
+
 			p.totalFreeQuotableResource.SubWithoutAssert(event.Task.Resreq)
-			// todo: if queue free guarantee that give it and calculate totalFreeGuarantee
-			// p.totalFreeGuarantee.SubWithoutAssert(event.Task.Resreq)
 
 			klog.V(4).Infof("Quotas AllocateFunc: task <%v/%v>, resreq <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
 		},
 		DeallocateFunc: func(event *framework.Event) {
+			// todo: calculate preemtable
+
 			if !p.enableTaskInQuotas(event.Task) {
 				return
 			}
@@ -502,7 +509,10 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := p.queueOpts[job.Queue]
 
+			p.totalFreeGuarantee.Sub(attr.GetFreeGuarantee())
 			attr.allocated.Sub(event.Task.Resreq)
+			p.totalFreeGuarantee.Add(attr.GetFreeGuarantee())
+
 			p.totalFreeQuotableResource.Add(event.Task.Resreq)
 
 			klog.V(4).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>",
