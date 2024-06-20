@@ -42,6 +42,7 @@ const (
 type quotasPlugin struct {
 	totalQuotableResource     *api.Resource
 	totalFreeQuotableResource *api.Resource
+	totalActivePreemptable    *api.Resource
 
 	totalGuarantee     *api.Resource
 	totalFreeGuarantee *api.Resource
@@ -97,6 +98,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 	pp := &quotasPlugin{
 		totalQuotableResource:     api.EmptyResource(),
 		totalFreeQuotableResource: api.EmptyResource(),
+		totalActivePreemptable:    api.EmptyResource(),
 
 		totalGuarantee:     api.EmptyResource(),
 		totalFreeGuarantee: api.EmptyResource(),
@@ -308,6 +310,11 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			for _, task := range tasks {
 				if task.Preemptable {
 					attr.preemption.Add(task.Resreq)
+
+					if api.AllocatedStatus(status) {
+						p.totalActivePreemptable.Add(task.Resreq)
+						klog.V(4).Infof("task <%s/%s> is preemptable and active", task.Namespace, task.Name)
+					}
 				}
 
 				if !p.enableTaskInQuotas(task) {
@@ -369,30 +376,13 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				return util.Permit
 			}
 
-			//freeDescGuarantee := attr.GetFreeGuarantee(minResources)
-
-			// todo
-			//totalFreeQuotableResource := p.totalFreeQuotableResource.Clone().Add(freeGuarantee)
-
-			//if p.totalFreeGuarantee.LessEqual(totalFreeQuotableResource, api.Zero) {
-			//	return util.Permit
-			//}
-
-			// totalFreeGuarantee - freeGuaranteeForCurrQueue <= totalFreeQuotableResource
-
-			//if p.totalFreeQuotableResource.LessEqual(minResources, api.Infinity) {
-			//}
-
-			if p.totalFreeGuarantee.LessEqual(minResources, api.Zero) {
-
+			// totalFreeGuarantee - freeGuaranteeForCurrQueue + minResources <= totalFreeQuotableResource // + preemtable
+			overGuarantee := p.totalFreeGuarantee.Clone().Add(minResources).Sub(attr.GetFreeGuarantee())
+			if overGuarantee.LessEqual(p.totalFreeQuotableResource, api.Infinity) {
+				return util.Permit
 			}
 
-			p.totalGuarantee.Clone().Sub(attr.guarantee).Add(minResources)
-
-			// todo: проверить, что totalIdle - minResources больше чем
-			// p.totalGuarantee - (attr.guarantee) -
-
-			return util.Permit
+			//return util.Permit
 		}
 
 		ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "job's MinResources is greater than limit")
@@ -481,13 +471,15 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			// todo: calculate preemtable
+			job, found := ssn.Jobs[event.Task.Job]
+			if found && job.Preemptable {
+				p.totalActivePreemptable.Add(event.Task.Resreq)
+			}
 
 			if !p.enableTaskInQuotas(event.Task) {
 				return
 			}
 
-			job := ssn.Jobs[event.Task.Job]
 			attr := p.queueOpts[job.Queue]
 
 			p.totalFreeGuarantee.Sub(attr.GetFreeGuarantee())
@@ -500,13 +492,15 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
 		},
 		DeallocateFunc: func(event *framework.Event) {
-			// todo: calculate preemtable
+			job, found := ssn.Jobs[event.Task.Job]
+			if found && job.Preemptable {
+				p.totalActivePreemptable.Sub(event.Task.Resreq)
+			}
 
 			if !p.enableTaskInQuotas(event.Task) {
 				return
 			}
 
-			job := ssn.Jobs[event.Task.Job]
 			attr := p.queueOpts[job.Queue]
 
 			p.totalFreeGuarantee.Sub(attr.GetFreeGuarantee())
