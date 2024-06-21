@@ -66,6 +66,9 @@ func isTerminated(task *schedulingapi.TaskInfo) bool {
 		}
 	}
 
+	klog.V(2).
+		Infof("Task %s/%s is terminated. terminatedTime: %s", task.Namespace, task.Name, terminatedTime)
+
 	if terminatedTime.IsZero() || terminatedTime.Add(waitResourcesAfterTerminatedTimeout).UTC().Before(time.Now().UTC()) {
 		return false
 	}
