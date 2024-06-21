@@ -66,7 +66,7 @@ func isTerminated(task *schedulingapi.TaskInfo) bool {
 		}
 	}
 
-	if terminatedTime.IsZero() || terminatedTime.Add(waitResourcesAfterTerminatedTimeout).Before(time.Now()) {
+	if terminatedTime.IsZero() || terminatedTime.Add(waitResourcesAfterTerminatedTimeout).UTC().Before(time.Now().UTC()) {
 		return false
 	}
 
