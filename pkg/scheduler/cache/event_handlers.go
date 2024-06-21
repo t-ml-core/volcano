@@ -52,7 +52,7 @@ import (
 
 var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
 
-var waitResourcesAfterTerminatedTimeout = 5 * time.Minute
+var waitResourcesAfterTerminatedTimeout = time.Minute
 
 func isTerminated(task *schedulingapi.TaskInfo) bool {
 	if task.Status != schedulingapi.Succeeded && task.Status != schedulingapi.Failed {
