@@ -234,11 +234,14 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 
 		node := sc.Nodes[pi.NodeName]
 		if !isTerminated(pi) {
+			if pi.Status == schedulingapi.Failed || pi.Status == schedulingapi.Succeeded {
+				klog.V(2).Infof("Take into account pod <%v/%v> in status %s on node %s", pi.Namespace, pi.Name, pi.Status, node.Name)
+			}
 			if err := node.AddTask(pi); err != nil {
 				return err
 			}
 		} else {
-			klog.V(4).Infof("Skip pod <%v/%v> in status %s on node %s", pi.Namespace, pi.Name, pi.Status.String(), node.Name)
+			klog.V(2).Infof("Skip pod <%v/%v> in status %s on node %s", pi.Namespace, pi.Name, pi.Status, node.Name)
 		}
 	}
 
