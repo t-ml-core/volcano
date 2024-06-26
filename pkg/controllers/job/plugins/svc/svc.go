@@ -27,6 +27,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -35,6 +36,17 @@ import (
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
+type npPortSpecsVar []string
+
+func (v *npPortSpecsVar) String() string {
+	return strings.Join(*v, ",")
+}
+
+func (v *npPortSpecsVar) Set(value string) error {
+	*v = append(*v, value)
+	return nil
+}
+
 type servicePlugin struct {
 	// Arguments given for the plugin
 	pluginArguments []string
@@ -42,8 +54,9 @@ type servicePlugin struct {
 	Clientset pluginsinterface.PluginClientset
 
 	// flag parse args
-	publishNotReadyAddresses bool
-	disableNetworkPolicy     bool
+	publishNotReadyAddresses       bool
+	disableNetworkPolicy           bool
+	networkPolicyIngressPortsSpecs npPortSpecsVar
 }
 
 // New creates service plugin.
@@ -65,6 +78,7 @@ func (sp *servicePlugin) addFlags() {
 		"set publishNotReadyAddresses of svc to true")
 	flagSet.BoolVar(&sp.disableNetworkPolicy, "disable-network-policy", sp.disableNetworkPolicy,
 		"set disableNetworkPolicy of svc to true")
+	flagSet.Var(&sp.networkPolicyIngressPortsSpecs, "network-policy-ingress-ports", "specify network policy ingress ports for incoming connections")
 
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
@@ -286,6 +300,23 @@ func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
 			},
 		}
 
+		if len(sp.networkPolicyIngressPortsSpecs) > 0 {
+			var ports []networkingv1.NetworkPolicyPort
+			for _, spec := range sp.networkPolicyIngressPortsSpecs {
+				portPolicy, err := parseNetworkPolicyPort(spec)
+				if err != nil {
+					klog.V(3).Infof("Failed to build network policy for Job <%s/%s>: %v", job.Namespace, job.Name, err)
+					return err
+				}
+
+				ports = append(ports, *portPolicy)
+			}
+
+			networkpolicy.Spec.Ingress = append(networkpolicy.Spec.Ingress, networkingv1.NetworkPolicyIngressRule{
+				Ports: ports,
+			})
+		}
+
 		if _, e := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Create(context.TODO(), networkpolicy, metav1.CreateOptions{}); e != nil {
 			klog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
 			return e
@@ -336,4 +367,23 @@ func GenerateHosts(job *batch.Job) map[string]string {
 	}
 
 	return hostFile
+}
+
+// parseNetworkPolicyPort convert string like 1234/tcp into k8s NetworkPolicyPort struct
+func parseNetworkPolicyPort(spec string) (*networkingv1.NetworkPolicyPort, error) {
+	specs := strings.Split(spec, "/")
+	if len(specs) == 0 {
+		return nil, fmt.Errorf("wrong network policy port spec given")
+	}
+
+	port := intstr.Parse(specs[0])
+	protocol := v1.ProtocolTCP
+	if len(specs) == 2 {
+		protocol = v1.Protocol(strings.ToUpper(specs[1]))
+	}
+
+	return &networkingv1.NetworkPolicyPort{
+		Protocol: &protocol,
+		Port:     &port,
+	}, nil
 }
