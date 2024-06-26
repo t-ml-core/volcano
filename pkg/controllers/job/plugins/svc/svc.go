@@ -305,7 +305,7 @@ func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
 			for _, spec := range sp.networkPolicyIngressPortsSpecs {
 				portPolicy, err := parseNetworkPolicyPort(spec)
 				if err != nil {
-					klog.V(3).Infof("Failed to build network policy for Job <%s/%s>: %v", job.Namespace, job.Name, err)
+					klog.V(3).Infof("failed to parse network policy ports from plugin settings for Job <%s/%s>: %v", job.Namespace, job.Name, err)
 					return err
 				}
 
