@@ -372,7 +372,9 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		minResources := job.GetMinResources()
 		incrAllocated := attr.allocated.Clone().Add(minResources)
+		greaterThanLimit := true
 		if incrAllocated.LessEqual(attr.limit, api.Infinity) {
+			greaterThanLimit = false
 			if incrAllocated.LessEqual(attr.guarantee, api.Infinity) {
 				return util.Permit
 			}
@@ -385,7 +387,14 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "job's MinResources is greater than limit")
+		klog.V(4).Infof("job name <%s>; minResources <%v>; attr.limit <%v>; attr.guarantee <%v>; incrAllocated <%v>", job.Name, minResources, attr.limit, attr.guarantee, incrAllocated)
+		pendingReasonDetails := "job's MinResources "
+		if greaterThanLimit {
+			pendingReasonDetails += "is greater than limit"
+		} else {
+			pendingReasonDetails += "can take someone else's quota"
+		}
+		ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, pendingReasonDetails)
 		return util.Reject
 	})
 
