@@ -402,10 +402,10 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		if incrAllocated.LessEqual(attr.limit, api.Infinity) {
+		if incrAllocated.LessEqual(attr.limit, api.Zero) {
 			greaterThanLimit = false
 
-			if incrAllocated.LessEqual(guarantee, api.Infinity) {
+			if incrAllocated.LessEqual(guarantee, api.Zero) {
 				return util.Permit
 			}
 
