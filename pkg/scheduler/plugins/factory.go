@@ -71,5 +71,5 @@ func init() {
 	framework.RegisterPluginBuilder(queuemetrics.PluginName, queuemetrics.New)
 
 	// Plugin for quotas
-	framework.RegisterPluginBuilder(quotas.PluginName, queuemetrics.New)
+	framework.RegisterPluginBuilder(quotas.PluginName, quotas.New)
 }
