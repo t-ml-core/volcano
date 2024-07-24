@@ -251,6 +251,7 @@ func (p *quotasPlugin) enableNodeInQuotas(node *api.NodeInfo) bool {
 
 func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 	// assert.Assertf(!p.totalGuarantee.IsEmpty(), "total guarantee must be not empty")
+	// totalQuotableResource
 
 	attr := &queueAttr{
 		queueID: queue.UID,
@@ -376,39 +377,16 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				return util.Permit
 			}
 
-			// totalFreeGuarantee - freeGuaranteeForCurrQueue + minResources <= totalFreeQuotableResource // + preemtable
+			// totalFreeGuarantee - freeGuaranteeForCurrQueue + minResources <= totalFreeQuotableResource + preemtable
 			overGuarantee := p.totalFreeGuarantee.Clone().Add(minResources).Sub(attr.GetFreeGuarantee())
-			if overGuarantee.LessEqual(p.totalFreeQuotableResource, api.Infinity) {
+			totalFreeQuotableResourceAfterPreemption := p.totalFreeQuotableResource.Clone().Add(p.totalActivePreemptable)
+			if overGuarantee.LessEqual(totalFreeQuotableResourceAfterPreemption, api.Infinity) {
 				return util.Permit
 			}
-
-			//return util.Permit
 		}
 
 		ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "job's MinResources is greater than limit")
 		return util.Reject
-	})
-
-	ssn.AddAllocatableFn(p.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
-		if !p.enableTaskInQuotas(candidate) {
-			return true
-		}
-
-		attr := p.queueOpts[queue.UID]
-		free, _ := attr.limit.Diff(attr.allocated, api.Zero)
-		if candidate.Resreq.LessEqual(free, api.Zero) {
-			return true
-		}
-
-		klog.V(3).Infof("Queue <%v>: limit <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
-			queue.Name, attr.limit, attr.allocated, candidate.Name, candidate.Resreq)
-
-		job, found := ssn.Jobs[candidate.Job]
-		if found {
-			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "task's resreq is greater than limit")
-		}
-
-		return false
 	})
 
 	ssn.AddQueueOrderFn(p.Name(), func(l, r any) int {
