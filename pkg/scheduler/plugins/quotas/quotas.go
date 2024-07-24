@@ -17,12 +17,11 @@ limitations under the License.
 package quotas
 
 import (
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 	"math"
 	"math/rand"
 	"sort"
-
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
 
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -283,6 +282,25 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 	return attr
 }
 
+func (p *quotasPlugin) getGuaranteeToCheckEnqueue(totalGuarantee *api.Resource, attrGuarantee *api.Resource) *api.Resource {
+	guarantee := attrGuarantee.Clone()
+	if totalGuarantee.MilliCPU == 0 {
+		guarantee.MilliCPU = math.MaxFloat64
+	}
+
+	if totalGuarantee.Memory == 0 {
+		guarantee.Memory = math.MaxFloat64
+	}
+
+	for name, value := range totalGuarantee.ScalarResources {
+		if value == 0 {
+			guarantee.ScalarResources[name] = math.MaxFloat64
+		}
+	}
+
+	return guarantee
+}
+
 func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 	for _, node := range ssn.Nodes {
 		if p.enableNodeInQuotas(node) {
@@ -375,7 +393,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		greaterThanLimit := true
 		if incrAllocated.LessEqual(attr.limit, api.Infinity) {
 			greaterThanLimit = false
-			if incrAllocated.LessEqual(attr.guarantee, api.Infinity) {
+			if incrAllocated.LessEqual(p.getGuaranteeToCheckEnqueue(p.totalGuarantee, attr.guarantee), api.Infinity) {
 				return util.Permit
 			}
 
@@ -500,6 +518,10 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
 		},
 	})
+}
+
+func (p *quotasPlugin) checkGaranteeResources() {
+
 }
 
 func (p *quotasPlugin) OnSessionClose(ssn *framework.Session) {
