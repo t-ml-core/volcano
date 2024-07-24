@@ -394,6 +394,10 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		for name := range attr.limit.ScalarResources {
 			if _, ok := p.totalGuarantee.ScalarResources[name]; !ok {
+				if guarantee.ScalarResources == nil {
+					guarantee.ScalarResources = make(map[v1.ResourceName]float64)
+				}
+
 				guarantee.ScalarResources[name] = attr.limit.ScalarResources[name]
 			}
 		}
@@ -526,10 +530,6 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
 		},
 	})
-}
-
-func (p *quotasPlugin) checkGaranteeResources() {
-
 }
 
 func (p *quotasPlugin) OnSessionClose(ssn *framework.Session) {
