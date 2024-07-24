@@ -292,6 +292,10 @@ func (p *quotasPlugin) getGuaranteeToCheckEnqueue(totalGuarantee *api.Resource, 
 		guarantee.Memory = math.MaxFloat64
 	}
 
+	if guarantee.ScalarResources == nil && totalGuarantee.ScalarResources != nil {
+		guarantee.ScalarResources = make(map[v1.ResourceName]float64, len(totalGuarantee.ScalarResources))
+	}
+
 	for name, value := range totalGuarantee.ScalarResources {
 		if value == 0 {
 			guarantee.ScalarResources[name] = math.MaxFloat64
