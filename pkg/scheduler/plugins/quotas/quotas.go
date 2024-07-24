@@ -264,45 +264,31 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 		limit:     api.EmptyResource(),
 	}
 
-	attr.limit.MilliCPU = math.MaxFloat64
-	attr.limit.Memory = math.MaxFloat64
-
 	if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
 		attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
 	}
 
+	attr.limit.MilliCPU = math.MaxFloat64
+	attr.limit.Memory = math.MaxFloat64
 	if len(queue.Queue.Spec.Capability) != 0 {
 		queueLimit := api.NewResource(queue.Queue.Spec.Capability)
-		attr.limit = attr.limit.MinDimensionResource(queueLimit, api.Infinity)
+		attr.limit = queueLimit.MinDimensionResource(attr.limit, api.Infinity)
 	}
 
 	realLimit := p.totalQuotableResource.Clone().Add(attr.guarantee).SubWithoutAssert(p.totalGuarantee)
-	attr.limit = attr.limit.MinDimensionResource(realLimit, api.Infinity)
+	attr.limit = realLimit.MinDimensionResource(attr.limit, api.Infinity)
+
+	//if p.totalGuarantee.MilliCPU == 0 {
+	//	attr.guarantee.MilliCPU = attr.limit.MilliCPU
+	//}
+
+	//if p.totalGuarantee.Memory == 0 {
+	//	attr.guarantee.Memory = attr.limit.Memory
+	//}
+
+	//attr.guarantee = attr.limit.Clone().MinDimensionResource(attr.guarantee, api.Zero)
 
 	return attr
-}
-
-func (p *quotasPlugin) getGuaranteeToCheckEnqueue(totalGuarantee *api.Resource, attrGuarantee *api.Resource) *api.Resource {
-	guarantee := attrGuarantee.Clone()
-	if totalGuarantee.MilliCPU == 0 {
-		guarantee.MilliCPU = math.MaxFloat64
-	}
-
-	if totalGuarantee.Memory == 0 {
-		guarantee.Memory = math.MaxFloat64
-	}
-
-	if guarantee.ScalarResources == nil && totalGuarantee.ScalarResources != nil {
-		guarantee.ScalarResources = make(map[v1.ResourceName]float64, len(totalGuarantee.ScalarResources))
-	}
-
-	for name, value := range totalGuarantee.ScalarResources {
-		if value == 0 {
-			guarantee.ScalarResources[name] = math.MaxFloat64
-		}
-	}
-
-	return guarantee
 }
 
 func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
@@ -394,18 +380,28 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		minResources := job.GetMinResources()
 		incrAllocated := attr.allocated.Clone().Add(minResources)
+		greaterThanLimit := true
 
-		guaranteeToCheckEnqueue := p.getGuaranteeToCheckEnqueue(p.totalGuarantee, attr.guarantee)
-		for name := range incrAllocated.ScalarResources {
-			if _, ok := guaranteeToCheckEnqueue.ScalarResources[name]; !ok {
-				guaranteeToCheckEnqueue.ScalarResources[name] = math.MaxFloat64
+		// todo: fix it crutch
+		guarantee := attr.guarantee.Clone()
+		if p.totalGuarantee.MilliCPU == 0 {
+			guarantee.MilliCPU = attr.limit.MilliCPU
+		}
+
+		if p.totalGuarantee.Memory == 0 {
+			guarantee.Memory = attr.limit.Memory
+		}
+
+		for name := range attr.limit.ScalarResources {
+			if _, ok := p.totalGuarantee.ScalarResources[name]; !ok {
+				guarantee.ScalarResources[name] = attr.limit.ScalarResources[name]
 			}
 		}
 
-		greaterThanLimit := true
 		if incrAllocated.LessEqual(attr.limit, api.Infinity) {
 			greaterThanLimit = false
-			if incrAllocated.LessEqual(guaranteeToCheckEnqueue, api.Infinity) {
+
+			if incrAllocated.LessEqual(guarantee, api.Infinity) {
 				return util.Permit
 			}
 
@@ -417,7 +413,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		klog.V(4).Infof("job name <%s>; minResources <%v>; attr.limit <%v>; attr.guarantee <%v>; incrAllocated <%v>", job.Name, minResources, attr.limit, guaranteeToCheckEnqueue, incrAllocated)
+		klog.V(4).Infof("job name <%s>; minResources <%v>; attr.limit <%v>; attr.guarantee <%v>; incrAllocated <%v>", job.Name, minResources, attr.limit, guarantee, incrAllocated)
 		pendingReasonDetails := "job's MinResources "
 		if greaterThanLimit {
 			pendingReasonDetails += "is greater than limit"
