@@ -395,16 +395,16 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		minResources := job.GetMinResources()
 		incrAllocated := attr.allocated.Clone().Add(minResources)
 		greaterThanLimit := true
-		if incrAllocated.LessEqual(attr.limit, api.Infinity) {
+		if incrAllocated.LessEqual(attr.limit, api.Zero) {
 			greaterThanLimit = false
-			if incrAllocated.LessEqual(p.getGuaranteeToCheckEnqueue(p.totalGuarantee, attr.guarantee), api.Infinity) {
+			if incrAllocated.LessEqual(p.getGuaranteeToCheckEnqueue(p.totalGuarantee, attr.guarantee), api.Zero) {
 				return util.Permit
 			}
 
 			// totalFreeGuarantee - freeGuaranteeForCurrQueue + minResources <= totalFreeQuotableResource + preemtable
 			overGuarantee := p.totalFreeGuarantee.Clone().Add(minResources).Sub(attr.GetFreeGuarantee())
 			totalFreeQuotableResourceAfterPreemption := p.totalFreeQuotableResource.Clone().Add(p.totalActivePreemptable)
-			if overGuarantee.LessEqual(totalFreeQuotableResourceAfterPreemption, api.Infinity) {
+			if overGuarantee.LessEqual(totalFreeQuotableResourceAfterPreemption, api.Zero) {
 				return util.Permit
 			}
 		}
