@@ -394,10 +394,18 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		minResources := job.GetMinResources()
 		incrAllocated := attr.allocated.Clone().Add(minResources)
+
+		guaranteeToCheckEnqueue := p.getGuaranteeToCheckEnqueue(p.totalGuarantee, attr.guarantee)
+		for name := range incrAllocated.ScalarResources {
+			if _, ok := guaranteeToCheckEnqueue.ScalarResources[name]; !ok {
+				guaranteeToCheckEnqueue.ScalarResources[name] = math.MaxFloat64
+			}
+		}
+
 		greaterThanLimit := true
-		if incrAllocated.LessEqual(attr.limit, api.Zero) {
+		if incrAllocated.LessEqual(attr.limit, api.Infinity) {
 			greaterThanLimit = false
-			if incrAllocated.LessEqual(p.getGuaranteeToCheckEnqueue(p.totalGuarantee, attr.guarantee), api.Zero) {
+			if incrAllocated.LessEqual(guaranteeToCheckEnqueue, api.Infinity) {
 				return util.Permit
 			}
 
@@ -409,7 +417,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		klog.V(4).Infof("job name <%s>; minResources <%v>; attr.limit <%v>; attr.guarantee <%v>; incrAllocated <%v>", job.Name, minResources, attr.limit, attr.guarantee, incrAllocated)
+		klog.V(4).Infof("job name <%s>; minResources <%v>; attr.limit <%v>; attr.guarantee <%v>; incrAllocated <%v>", job.Name, minResources, attr.limit, guaranteeToCheckEnqueue, incrAllocated)
 		pendingReasonDetails := "job's MinResources "
 		if greaterThanLimit {
 			pendingReasonDetails += "is greater than limit"
