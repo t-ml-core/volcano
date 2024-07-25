@@ -17,11 +17,13 @@ limitations under the License.
 package quotas
 
 import (
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
+	"errors"
 	"math"
 	"math/rand"
 	"sort"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -278,17 +280,50 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 	realLimit := p.totalQuotableResource.Clone().Add(attr.guarantee).SubWithoutAssert(p.totalGuarantee)
 	attr.limit = realLimit.MinDimensionResource(attr.limit, api.Infinity)
 
-	//if p.totalGuarantee.MilliCPU == 0 {
-	//	attr.guarantee.MilliCPU = attr.limit.MilliCPU
-	//}
-
-	//if p.totalGuarantee.Memory == 0 {
-	//	attr.guarantee.Memory = attr.limit.Memory
-	//}
-
-	//attr.guarantee = attr.limit.Clone().MinDimensionResource(attr.guarantee, api.Zero)
-
 	return attr
+}
+
+func (p *quotasPlugin) handleGuarantee(attr *queueAttr, jobName string, resReq *api.Resource) error {
+	guarantee := attr.guarantee.Clone()
+	if p.totalGuarantee.MilliCPU == 0 {
+		guarantee.MilliCPU = attr.limit.MilliCPU
+	}
+
+	if p.totalGuarantee.Memory == 0 {
+		guarantee.Memory = attr.limit.Memory
+	}
+
+	for name := range attr.limit.ScalarResources {
+		if _, ok := p.totalGuarantee.ScalarResources[name]; !ok {
+			if guarantee.ScalarResources == nil {
+				guarantee.ScalarResources = make(map[v1.ResourceName]float64)
+			}
+
+			guarantee.ScalarResources[name] = attr.limit.ScalarResources[name]
+		}
+	}
+
+	incrAllocated := attr.allocated.Clone().Add(resReq)
+
+	klog.V(4).Infof("job name <%s>; minResources <%v>; attr.limit <%v>; attr.guarantee <%v>; incrAllocated <%v>",
+		jobName, resReq, attr.limit, guarantee, incrAllocated)
+
+	if !incrAllocated.LessEqual(attr.limit, api.Zero) {
+		return errors.New("job's resource request is greater than queue's limit")
+	}
+
+	if incrAllocated.LessEqual(guarantee, api.Zero) {
+		return nil
+	}
+
+	// totalFreeGuarantee - freeGuaranteeForCurrQueue + resReq <= totalFreeQuotableResource + preemtable
+	overGuarantee := p.totalFreeGuarantee.Clone().Add(resReq).Sub(attr.GetFreeGuarantee())
+	totalFreeQuotableResourceAfterPreemption := p.totalFreeQuotableResource.Clone().Add(p.totalActivePreemptable)
+	if overGuarantee.LessEqual(totalFreeQuotableResourceAfterPreemption, api.Zero) {
+		return nil
+	}
+
+	return errors.New("job's resource request can take someone else's quota")
 }
 
 func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
@@ -359,13 +394,6 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddJobEnqueueableFn(p.Name(), func(obj any) int {
 		job := obj.(*api.JobInfo)
 		attr := p.queueOpts[job.Queue]
-		queue := ssn.Queues[job.Queue]
-
-		if attr.limit.IsEmpty() {
-			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
-				queue.Name, job.Namespace, job.Name)
-			return util.Permit
-		}
 
 		if job.PodGroup.Spec.MinResources == nil {
 			klog.V(4).Infof("Job %s MinResources is null.", job.Name)
@@ -378,54 +406,28 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		minResources := job.GetMinResources()
-		incrAllocated := attr.allocated.Clone().Add(minResources)
-		greaterThanLimit := true
-
-		// todo: fix it crutch
-		guarantee := attr.guarantee.Clone()
-		if p.totalGuarantee.MilliCPU == 0 {
-			guarantee.MilliCPU = attr.limit.MilliCPU
+		if err := p.handleGuarantee(attr, job.Name, job.GetMinResources()); err != nil {
+			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "EnqueueableFn: "+err.Error())
+			return util.Reject
 		}
 
-		if p.totalGuarantee.Memory == 0 {
-			guarantee.Memory = attr.limit.Memory
+		return util.Permit
+	})
+
+	ssn.AddAllocatableFn(p.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		if !p.enableTaskInQuotas(candidate) {
+			return true
 		}
 
-		for name := range attr.limit.ScalarResources {
-			if _, ok := p.totalGuarantee.ScalarResources[name]; !ok {
-				if guarantee.ScalarResources == nil {
-					guarantee.ScalarResources = make(map[v1.ResourceName]float64)
-				}
+		job := ssn.Jobs[candidate.Job]
+		attr := p.queueOpts[queue.UID]
 
-				guarantee.ScalarResources[name] = attr.limit.ScalarResources[name]
-			}
+		if err := p.handleGuarantee(attr, candidate.Name, candidate.Resreq); err != nil {
+			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "AllocatableFn: "+err.Error())
+			return false
 		}
 
-		if incrAllocated.LessEqual(attr.limit, api.Zero) {
-			greaterThanLimit = false
-
-			if incrAllocated.LessEqual(guarantee, api.Zero) {
-				return util.Permit
-			}
-
-			// totalFreeGuarantee - freeGuaranteeForCurrQueue + minResources <= totalFreeQuotableResource + preemtable
-			overGuarantee := p.totalFreeGuarantee.Clone().Add(minResources).Sub(attr.GetFreeGuarantee())
-			totalFreeQuotableResourceAfterPreemption := p.totalFreeQuotableResource.Clone().Add(p.totalActivePreemptable)
-			if overGuarantee.LessEqual(totalFreeQuotableResourceAfterPreemption, api.Zero) {
-				return util.Permit
-			}
-		}
-
-		klog.V(4).Infof("job name <%s>; minResources <%v>; attr.limit <%v>; attr.guarantee <%v>; incrAllocated <%v>", job.Name, minResources, attr.limit, guarantee, incrAllocated)
-		pendingReasonDetails := "job's MinResources "
-		if greaterThanLimit {
-			pendingReasonDetails += "is greater than limit"
-		} else {
-			pendingReasonDetails += "can take someone else's quota"
-		}
-		ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, pendingReasonDetails)
-		return util.Reject
+		return true
 	})
 
 	ssn.AddQueueOrderFn(p.Name(), func(l, r any) int {
