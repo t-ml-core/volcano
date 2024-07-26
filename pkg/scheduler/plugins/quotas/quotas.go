@@ -37,7 +37,7 @@ const (
 	ignoreNodeTaintKeysOpt = "ignore.node.taint.keys"
 	ignoreNodeLabelsOpt    = "ignore.node.labels"
 
-	allowedDeltaFromBestNodeScoreOpt = "allowed-delta-from-best-node-score"
+	allowedDeltaFromBestNodeScoreOpt = "allowed.delta.from.best.node.score"
 )
 
 type quotasPlugin struct {
@@ -251,9 +251,6 @@ func (p *quotasPlugin) enableNodeInQuotas(node *api.NodeInfo) bool {
 }
 
 func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
-	// assert.Assertf(!p.totalGuarantee.IsEmpty(), "total guarantee must be not empty")
-	// totalQuotableResource
-
 	attr := &queueAttr{
 		queueID: queue.UID,
 		name:    queue.Name,
@@ -283,7 +280,7 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 	return attr
 }
 
-func (p *quotasPlugin) handleGuarantee(attr *queueAttr, jobName string, resReq *api.Resource) error {
+func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api.Resource) error {
 	guarantee := attr.guarantee.Clone()
 	if p.totalGuarantee.MilliCPU == 0 {
 		guarantee.MilliCPU = attr.limit.MilliCPU
@@ -406,7 +403,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		if err := p.handleGuarantee(attr, job.Name, job.GetMinResources()); err != nil {
+		if err := p.handleQuotas(attr, job.Name, job.GetMinResources()); err != nil {
 			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "EnqueueableFn: "+err.Error())
 			return util.Reject
 		}
@@ -422,7 +419,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		job := ssn.Jobs[candidate.Job]
 		attr := p.queueOpts[queue.UID]
 
-		if err := p.handleGuarantee(attr, candidate.Name, candidate.Resreq); err != nil {
+		if err := p.handleQuotas(attr, candidate.Name, candidate.Resreq); err != nil {
 			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "AllocatableFn: "+err.Error())
 			return false
 		}
@@ -434,6 +431,8 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
+		// The more preemptible tasks there are in the queue, the later we will process it.
+		// This is necessary for the allocate-preempt loop to work more efficiently
 		if !p.queueOpts[lv.UID].preemption.Equal(p.queueOpts[rv.UID].preemption, api.Zero) {
 			if p.queueOpts[lv.UID].preemption.LessEqual(p.queueOpts[rv.UID].preemption, api.Zero) {
 				return -1
@@ -455,13 +454,13 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			scores = append(scores, score)
 		}
 
-		sort.Slice(scores, func(i, j int) bool {
-			return scores[i] > scores[j]
-		})
-
 		if len(scores) == 0 {
 			return nil
 		}
+
+		sort.Slice(scores, func(i, j int) bool {
+			return scores[i] > scores[j]
+		})
 
 		maxScore := scores[0]
 		if maxScore == 0 {
