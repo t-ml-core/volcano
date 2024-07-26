@@ -37,7 +37,7 @@ const (
 	ignoreNodeTaintKeysOpt = "ignore.node.taint.keys"
 	ignoreNodeLabelsOpt    = "ignore.node.labels"
 
-	allowedDeltaFromBestNodeScoreOpt = "allowed.delta.from.best.node.score"
+	allowedPercentageOfDeviationFromBestNodeScoreOpt = "allowed.percentage.of.deviation.from.best.node.score"
 )
 
 type quotasPlugin struct {
@@ -53,7 +53,7 @@ type quotasPlugin struct {
 	ignoreTaintKeys  []string
 	ignoreNodeLabels map[string][]string
 
-	allowedDeltaFromBestNodeScore float64
+	allowedPercentageOfDeviationFromBestNodeScoreOpt float64
 }
 
 type queueAttr struct {
@@ -82,7 +82,7 @@ func (q *queueAttr) GetFreeGuarantee(adds ...*api.Resource) *api.Resource {
    - plugins:
      - name: quotas
        arguments:
-         allowed-delta-from-best-node-score: 0.1
+         allowed.percentage.of.deviation.from.best.node.score: 0.1
          ignore.node.taint.keys:
             - node.kubernetes.io/unschedulable
             - ...
@@ -106,9 +106,9 @@ func New(arguments framework.Arguments) framework.Plugin {
 
 		queueOpts: map[api.QueueID]*queueAttr{},
 
-		ignoreTaintKeys:               []string{},
-		ignoreNodeLabels:              map[string][]string{},
-		allowedDeltaFromBestNodeScore: 0.1,
+		ignoreTaintKeys:  []string{},
+		ignoreNodeLabels: map[string][]string{},
+		allowedPercentageOfDeviationFromBestNodeScoreOpt: 0.1,
 	}
 
 	if ignoreNodeTaintKeysI, ok := arguments[ignoreNodeTaintKeysOpt]; ok {
@@ -147,12 +147,12 @@ func New(arguments framework.Arguments) framework.Plugin {
 		}
 	}
 
-	arguments.GetFloat64(&pp.allowedDeltaFromBestNodeScore, allowedDeltaFromBestNodeScoreOpt)
+	arguments.GetFloat64(&pp.allowedPercentageOfDeviationFromBestNodeScoreOpt, allowedPercentageOfDeviationFromBestNodeScoreOpt)
 
 	klog.V(5).Infof("parsed quotas args %s: %v; %s: %v; %s: %v",
 		ignoreNodeTaintKeysOpt, pp.ignoreTaintKeys,
 		ignoreNodeLabelsOpt, pp.ignoreNodeLabels,
-		allowedDeltaFromBestNodeScoreOpt, pp.allowedDeltaFromBestNodeScore,
+		allowedPercentageOfDeviationFromBestNodeScoreOpt, pp.allowedPercentageOfDeviationFromBestNodeScoreOpt,
 	)
 
 	return pp
@@ -468,7 +468,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		for _, score := range scores {
-			if 1.0-score/maxScore > p.allowedDeltaFromBestNodeScore {
+			if 1.0-score/maxScore > p.allowedPercentageOfDeviationFromBestNodeScoreOpt {
 				continue
 			}
 
