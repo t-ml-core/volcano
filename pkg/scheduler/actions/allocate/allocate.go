@@ -164,7 +164,6 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if task.Resreq.IsEmpty() {
 					klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
 						task.Namespace, task.Name)
-					ssn.SetJobPendingReason(job, "", vcv1beta1.InternalError, "resreq is empty")
 					continue
 				}
 
