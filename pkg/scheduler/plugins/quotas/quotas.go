@@ -41,9 +41,8 @@ const (
 )
 
 type quotasPlugin struct {
-	totalQuotableResource          *api.Resource
-	totalFreeQuotableResource      *api.Resource
-	totalActivePreemptableResource *api.Resource
+	totalQuotableResource     *api.Resource
+	totalFreeQuotableResource *api.Resource
 
 	totalGuarantee     *api.Resource
 	totalFreeGuarantee *api.Resource
@@ -280,6 +279,11 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 	return attr
 }
 
+var (
+	errResourceReqIsGreaterThanLimit  = errors.New("job's resource request is greater than queue's limit")
+	errResourceReqCanTakeSomeoneQuota = errors.New("job's resource request can take someone else's quota")
+)
+
 func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api.Resource) error {
 	guarantee := attr.guarantee.Clone()
 	if p.totalGuarantee.MilliCPU == 0 {
@@ -306,24 +310,20 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 		jobName, resReq, attr.limit, guarantee, incrAllocated)
 
 	if !incrAllocated.LessEqual(attr.limit, api.Zero) {
-		return errors.New("job's resource request is greater than queue's limit")
+		return errResourceReqIsGreaterThanLimit
 	}
 
 	if incrAllocated.LessEqual(guarantee, api.Zero) {
 		return nil
 	}
 
-	// todo: вместо totalActivePreemptable надо брать максимальное кол-во ресурсов с конкретной ноды,
-	// которые могут быть вытеснены от jobName
-
-	// totalFreeGuarantee - freeGuaranteeForCurrQueue + resReq <= totalFreeQuotableResource + preemtable
+	// totalFreeGuarantee - freeGuaranteeForCurrQueue + resReq <= totalFreeQuotableResource
 	overGuarantee := p.totalFreeGuarantee.Clone().Add(resReq).Sub(attr.GetFreeGuarantee())
-	totalFreeQuotableResourceAfterPreemption := p.totalFreeQuotableResource.Clone() //.Add(p.totalActivePreemptableResource)
-	if overGuarantee.LessEqual(totalFreeQuotableResourceAfterPreemption, api.Zero) {
+	if overGuarantee.LessEqual(p.totalFreeQuotableResource, api.Zero) {
 		return nil
 	}
 
-	return errors.New("job's resource request can take someone else's quota")
+	return errResourceReqCanTakeSomeoneQuota
 }
 
 func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
@@ -354,11 +354,6 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			for _, task := range tasks {
 				if task.Preemptable {
 					attr.preemption.Add(task.Resreq)
-
-					if api.AllocatedStatus(status) {
-						p.totalActivePreemptableResource.Add(task.Resreq)
-						klog.V(4).Infof("task <%s/%s> is preemptable and active", task.Namespace, task.Name)
-					}
 				}
 
 				if !p.enableTaskInQuotas(task) {
@@ -407,8 +402,15 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if err := p.handleQuotas(attr, job.Name, job.GetMinResources()); err != nil {
-			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "EnqueueableFn: "+err.Error())
-			return util.Reject
+			if errors.Is(err, errResourceReqIsGreaterThanLimit) {
+				ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "EnqueueableFn: "+err.Error())
+				return util.Reject
+			}
+
+			// we can free up resources through preemption
+			klog.V(3).Infof("enqueueable warning with job `%s`:  %w.", job.Name, err)
+
+			return util.Abstain
 		}
 
 		return util.Permit
@@ -492,16 +494,16 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			job, found := ssn.Jobs[event.Task.Job]
-			if found && job.Preemptable {
-				p.totalActivePreemptableResource.Add(event.Task.Resreq)
-			}
-
 			if node := ssn.Nodes[event.Task.NodeName]; node != nil && p.enableNodeInQuotas(node) {
 				p.totalFreeQuotableResource.SubWithoutAssert(event.Task.Resreq)
 			}
 
 			if !p.enableTaskInQuotas(event.Task) {
+				return
+			}
+
+			job := ssn.Jobs[event.Task.Job]
+			if job == nil {
 				return
 			}
 
@@ -515,16 +517,16 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
 		},
 		DeallocateFunc: func(event *framework.Event) {
-			job, found := ssn.Jobs[event.Task.Job]
-			if found && job.Preemptable {
-				p.totalActivePreemptableResource.Sub(event.Task.Resreq)
-			}
-
 			if node := ssn.Nodes[event.Task.NodeName]; node != nil && p.enableNodeInQuotas(node) {
 				p.totalFreeQuotableResource.Add(event.Task.Resreq)
 			}
 
 			if !p.enableTaskInQuotas(event.Task) {
+				return
+			}
+
+			job := ssn.Jobs[event.Task.Job]
+			if job == nil {
 				return
 			}
 
