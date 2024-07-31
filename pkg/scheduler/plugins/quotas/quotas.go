@@ -41,9 +41,9 @@ const (
 )
 
 type quotasPlugin struct {
-	totalQuotableResource     *api.Resource
-	totalFreeQuotableResource *api.Resource
-	totalActivePreemptable    *api.Resource
+	totalQuotableResource          *api.Resource
+	totalFreeQuotableResource      *api.Resource
+	totalActivePreemptableResource *api.Resource
 
 	totalGuarantee     *api.Resource
 	totalFreeGuarantee *api.Resource
@@ -97,9 +97,9 @@ func (q *queueAttr) GetFreeGuarantee(adds ...*api.Resource) *api.Resource {
 // New return quotas action
 func New(arguments framework.Arguments) framework.Plugin {
 	pp := &quotasPlugin{
-		totalQuotableResource:     api.EmptyResource(),
-		totalFreeQuotableResource: api.EmptyResource(),
-		totalActivePreemptable:    api.EmptyResource(),
+		totalQuotableResource:          api.EmptyResource(),
+		totalFreeQuotableResource:      api.EmptyResource(),
+		totalActivePreemptableResource: api.EmptyResource(),
 
 		totalGuarantee:     api.EmptyResource(),
 		totalFreeGuarantee: api.EmptyResource(),
@@ -313,9 +313,12 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 		return nil
 	}
 
+	// todo: вместо totalActivePreemptable надо брать максимальное кол-во ресурсов с конкретной ноды,
+	// которые могут быть вытеснены от jobName
+
 	// totalFreeGuarantee - freeGuaranteeForCurrQueue + resReq <= totalFreeQuotableResource + preemtable
 	overGuarantee := p.totalFreeGuarantee.Clone().Add(resReq).Sub(attr.GetFreeGuarantee())
-	totalFreeQuotableResourceAfterPreemption := p.totalFreeQuotableResource.Clone().Add(p.totalActivePreemptable)
+	totalFreeQuotableResourceAfterPreemption := p.totalFreeQuotableResource.Clone() //.Add(p.totalActivePreemptableResource)
 	if overGuarantee.LessEqual(totalFreeQuotableResourceAfterPreemption, api.Zero) {
 		return nil
 	}
@@ -353,7 +356,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 					attr.preemption.Add(task.Resreq)
 
 					if api.AllocatedStatus(status) {
-						p.totalActivePreemptable.Add(task.Resreq)
+						p.totalActivePreemptableResource.Add(task.Resreq)
 						klog.V(4).Infof("task <%s/%s> is preemptable and active", task.Namespace, task.Name)
 					}
 				}
@@ -491,7 +494,11 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		AllocateFunc: func(event *framework.Event) {
 			job, found := ssn.Jobs[event.Task.Job]
 			if found && job.Preemptable {
-				p.totalActivePreemptable.Add(event.Task.Resreq)
+				p.totalActivePreemptableResource.Add(event.Task.Resreq)
+			}
+
+			if node := ssn.Nodes[event.Task.NodeName]; node != nil && p.enableNodeInQuotas(node) {
+				p.totalFreeQuotableResource.SubWithoutAssert(event.Task.Resreq)
 			}
 
 			if !p.enableTaskInQuotas(event.Task) {
@@ -504,15 +511,17 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.allocated.Add(event.Task.Resreq)
 			p.totalFreeGuarantee.Add(attr.GetFreeGuarantee())
 
-			p.totalFreeQuotableResource.SubWithoutAssert(event.Task.Resreq)
-
 			klog.V(4).Infof("Quotas AllocateFunc: task <%v/%v>, resreq <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			job, found := ssn.Jobs[event.Task.Job]
 			if found && job.Preemptable {
-				p.totalActivePreemptable.Sub(event.Task.Resreq)
+				p.totalActivePreemptableResource.Sub(event.Task.Resreq)
+			}
+
+			if node := ssn.Nodes[event.Task.NodeName]; node != nil && p.enableNodeInQuotas(node) {
+				p.totalFreeQuotableResource.Add(event.Task.Resreq)
 			}
 
 			if !p.enableTaskInQuotas(event.Task) {
@@ -524,8 +533,6 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			p.totalFreeGuarantee.Sub(attr.GetFreeGuarantee())
 			attr.allocated.Sub(event.Task.Resreq)
 			p.totalFreeGuarantee.Add(attr.GetFreeGuarantee())
-
-			p.totalFreeQuotableResource.Add(event.Task.Resreq)
 
 			klog.V(4).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
