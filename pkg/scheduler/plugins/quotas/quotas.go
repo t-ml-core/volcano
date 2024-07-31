@@ -96,9 +96,8 @@ func (q *queueAttr) GetFreeGuarantee(adds ...*api.Resource) *api.Resource {
 // New return quotas action
 func New(arguments framework.Arguments) framework.Plugin {
 	pp := &quotasPlugin{
-		totalQuotableResource:          api.EmptyResource(),
-		totalFreeQuotableResource:      api.EmptyResource(),
-		totalActivePreemptableResource: api.EmptyResource(),
+		totalQuotableResource:     api.EmptyResource(),
+		totalFreeQuotableResource: api.EmptyResource(),
 
 		totalGuarantee:     api.EmptyResource(),
 		totalFreeGuarantee: api.EmptyResource(),
