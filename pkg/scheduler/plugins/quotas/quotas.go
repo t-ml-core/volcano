@@ -415,7 +415,6 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			// we can free up resources through preemption
 			klog.V(3).Infof("enqueueable warning with job `%s`:  %w.", job.Name, err)
-
 			return util.Abstain
 		}
 
