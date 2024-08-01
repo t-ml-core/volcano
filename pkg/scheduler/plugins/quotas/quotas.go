@@ -269,6 +269,13 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 	attr.limit.Memory = math.MaxFloat64
 	if len(queue.Queue.Spec.Capability) != 0 {
 		queueLimit := api.NewResource(queue.Queue.Spec.Capability)
+		if queueLimit.MilliCPU == 0 {
+			queueLimit.MilliCPU = math.MaxFloat64
+		}
+		if queueLimit.Memory == 0 {
+			queueLimit.Memory = math.MaxFloat64
+		}
+
 		attr.limit = queueLimit.MinDimensionResource(attr.limit, api.Infinity)
 	}
 
