@@ -28,7 +28,6 @@ import (
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
-	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 const (
@@ -391,37 +390,6 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		"free <%v>, total guarantee resource is <%v>, total free guarantee resource is <%v>",
 		p.totalQuotableResource, ssn.TotalResource, p.totalFreeQuotableResource, p.totalGuarantee, p.totalFreeGuarantee,
 	)
-
-	ssn.AddJobEnqueueableFn(p.Name(), func(obj any) int {
-		job := obj.(*api.JobInfo)
-		attr := p.queueOpts[job.Queue]
-
-		klog.V(4).Infof("AddJobEnqueueableFn: job_name: `%s`, len: `%d`, job: %v", job.Name, len(job.Tasks), job)
-
-		if job.PodGroup.Spec.MinResources == nil {
-			klog.V(4).Infof("Job %s MinResources is null.", job.Name)
-			return util.Permit
-		}
-
-		for _, task := range job.Tasks {
-			if !p.enableTaskInQuotas(task) {
-				return util.Permit
-			}
-		}
-
-		if err := p.handleQuotas(attr, job.Name, job.GetMinResources()); err != nil {
-			if errors.Is(err, errResourceReqIsGreaterThanLimit) {
-				ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "EnqueueableFn: "+err.Error())
-				return util.Reject
-			}
-
-			// we can free up resources through preemption
-			klog.V(3).Infof("enqueueable warning with job `%s`:  %w.", job.Name, err)
-			return util.Abstain
-		}
-
-		return util.Permit
-	})
 
 	ssn.AddAllocatableFn(p.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		if !p.enableTaskInQuotas(candidate) {
