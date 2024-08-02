@@ -396,6 +396,8 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		job := obj.(*api.JobInfo)
 		attr := p.queueOpts[job.Queue]
 
+		klog.V(4).Infof("AddJobEnqueueableFn: job_name: `%s`, len: `%d`, tasks: %v", job.Name, len(job.Tasks), job.Tasks)
+
 		if job.PodGroup.Spec.MinResources == nil {
 			klog.V(4).Infof("Job %s MinResources is null.", job.Name)
 			return util.Permit
