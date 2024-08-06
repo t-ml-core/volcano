@@ -296,7 +296,17 @@ func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
 						},
 					}},
 				}},
-				PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+				Egress: []networkingv1.NetworkPolicyEgressRule{{
+					To: []networkingv1.NetworkPolicyPeer{{
+						PodSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								batch.JobNameKey:      job.Name,
+								batch.JobNamespaceKey: job.Namespace,
+							},
+						},
+					}},
+				}},
+				PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress, networkingv1.PolicyTypeIngress},
 			},
 		}
 
