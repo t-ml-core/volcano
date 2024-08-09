@@ -66,11 +66,9 @@ func isTerminated(task *schedulingapi.TaskInfo) bool {
 		}
 	}
 
-	now := time.Now().UTC()
-	if terminatedTime.IsZero() || terminatedTime.Before(now.Add(waitResourcesAfterTerminatedTimeout)) {
-		klog.V(4).Infof("Take into account pod <%v/%v> in status %s on node %s. terminatedTime: %s, now: %s",
-			task.Pod.Namespace, task.Pod.Name, task.Pod.Status, task.Pod.Spec.NodeName,
-			terminatedTime, now)
+	if terminatedTime.IsZero() || time.Since(terminatedTime) < waitResourcesAfterTerminatedTimeout {
+		klog.V(4).Infof("Terminated pod has taken into account <%v/%v> in status %s on node %s",
+			task.Pod.Namespace, task.Pod.Name, task.Pod.Status, task.Pod.Spec.NodeName)
 		return false
 	}
 
