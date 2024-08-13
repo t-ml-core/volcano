@@ -66,7 +66,9 @@ func isTerminated(task *schedulingapi.TaskInfo) bool {
 		}
 	}
 
-	if terminatedTime.IsZero() || terminatedTime.Before(time.Now().Add(waitResourcesAfterTerminatedTimeout)) {
+	if terminatedTime.IsZero() || time.Since(terminatedTime) < waitResourcesAfterTerminatedTimeout {
+		klog.V(4).Infof("Terminated pod has taken into account <%v/%v> in status %s on node %s",
+			task.Pod.Namespace, task.Pod.Name, task.Pod.Status, task.Pod.Spec.NodeName)
 		return false
 	}
 
