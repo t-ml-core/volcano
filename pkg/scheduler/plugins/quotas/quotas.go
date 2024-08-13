@@ -436,9 +436,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := p.queueOpts[queue.UID]
 
 		if err := p.handleQuotas(attr, candidate.Name, candidate.Resreq); err != nil {
-			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota,
-				fmt.Sprintf("AllocatableFn: %v; %v", err, p.totalFreeQuotableResource),
-			)
+			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "AllocatableFn: "+err.Error())
 			return false
 		}
 
@@ -526,8 +524,8 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.allocated.Add(event.Task.Resreq)
 			p.totalFreeGuarantee.Add(attr.GetFreeGuarantee())
 
-			klog.V(4).Infof("Quotas AllocateFunc: task <%v/%v>, resreq <%v>",
-				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
+			klog.V(3).Infof("Quotas AllocateFunc: task <%v/%v>, resreq <%v>, attr.allocated: <%v>, totalFreeGuarantee: <%v>",
+				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.allocated, p.totalFreeGuarantee)
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			if node := ssn.Nodes[event.Task.NodeName]; node != nil && p.enableNodeInQuotas(node) {
@@ -549,8 +547,8 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.allocated.Sub(event.Task.Resreq)
 			p.totalFreeGuarantee.Add(attr.GetFreeGuarantee())
 
-			klog.V(4).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>",
-				event.Task.Namespace, event.Task.Name, event.Task.Resreq)
+			klog.V(3).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>, attr.allocated: <%v>, totalFreeGuarantee: <%v>",
+				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.allocated, p.totalFreeGuarantee)
 		},
 	})
 }
