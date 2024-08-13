@@ -18,6 +18,7 @@ package quotas
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 	"sort"
@@ -329,7 +330,12 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 		return nil
 	}
 
-	return errResourceReqCanTakeSomeoneQuota
+	return fmt.Errorf("%w; overGuarantee: %v; totalFreeGuarantee: %v; resReq: %v",
+		errResourceReqCanTakeSomeoneQuota,
+		overGuarantee,
+		p.totalFreeGuarantee,
+		resReq,
+	)
 }
 
 func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
@@ -430,7 +436,9 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := p.queueOpts[queue.UID]
 
 		if err := p.handleQuotas(attr, candidate.Name, candidate.Resreq); err != nil {
-			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "AllocatableFn: "+err.Error())
+			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota,
+				fmt.Sprintf("AllocatableFn: %v; %v", err, p.totalFreeQuotableResource),
+			)
 			return false
 		}
 
