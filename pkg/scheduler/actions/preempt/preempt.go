@@ -269,6 +269,12 @@ func preempt(
 				victimIDs = append(victimIDs, fmt.Sprintf("<%s/%s>", v.Namespace, v.Name))
 			}
 
+			if len(victims) == len(preemptees) {
+				klog.V(3).Infof("No validated victims for Task <%s/%s> on Node <%s>, victims %v: %v",
+					preemptor.Namespace, preemptor.Name, node.Name, victimIDs, err)
+				continue
+			}
+
 			preempteesIDs := make([]string, 0, len(preemptees))
 			for _, v := range preemptees {
 				preempteesIDs = append(preempteesIDs, fmt.Sprintf("<%s/%s>", v.Namespace, v.Name))
