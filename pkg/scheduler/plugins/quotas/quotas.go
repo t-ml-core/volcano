@@ -508,6 +508,12 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		AllocateFunc: func(event *framework.Event) {
 			if node := ssn.Nodes[event.Task.NodeName]; node != nil && p.enableNodeInQuotas(node) {
 				p.totalFreeQuotableResource.SubWithoutAssert(event.Task.Resreq)
+				klog.V(3).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>, totalFreeQuotableResource: <%v>",
+					event.Task.Namespace,
+					event.Task.Name,
+					event.Task.Resreq,
+					p.totalFreeQuotableResource,
+				)
 			}
 
 			if !p.enableTaskInQuotas(event.Task) {
@@ -537,6 +543,12 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		DeallocateFunc: func(event *framework.Event) {
 			if node := ssn.Nodes[event.Task.NodeName]; node != nil && p.enableNodeInQuotas(node) {
 				p.totalFreeQuotableResource.Add(event.Task.Resreq)
+				klog.V(3).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>, totalFreeQuotableResource: <%v>",
+					event.Task.Namespace,
+					event.Task.Name,
+					event.Task.Resreq,
+					p.totalFreeQuotableResource,
+				)
 			}
 
 			if !p.enableTaskInQuotas(event.Task) {
