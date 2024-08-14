@@ -339,13 +339,20 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 	)
 }
 
-func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
-	for _, node := range ssn.Nodes {
+func (p *quotasPlugin) updateQuotableResources(nodes map[string]*api.NodeInfo) {
+	p.totalQuotableResource = api.EmptyResource()
+	p.totalFreeQuotableResource = api.EmptyResource()
+
+	for _, node := range nodes {
 		if p.enableNodeInQuotas(node) {
 			p.totalQuotableResource.Add(node.Allocatable)
-			p.totalFreeQuotableResource.Add(node.Idle)
+			p.totalFreeQuotableResource.Add(node.FutureIdle())
 		}
 	}
+}
+
+func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
+	p.updateQuotableResources(ssn.Nodes)
 
 	for _, queue := range ssn.Queues {
 		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
@@ -506,15 +513,13 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			if node := ssn.Nodes[event.Task.NodeName]; node != nil && p.enableNodeInQuotas(node) {
-				p.totalFreeQuotableResource.SubWithoutAssert(event.Task.Resreq)
-				klog.V(3).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>, totalFreeQuotableResource: <%v>",
-					event.Task.Namespace,
-					event.Task.Name,
-					event.Task.Resreq,
-					p.totalFreeQuotableResource,
-				)
-			}
+			p.updateQuotableResources(ssn.Nodes)
+			klog.V(3).Infof("Quotas AllocateFunc: task <%v/%v>, resreq <%v>, totalFreeQuotableResource: <%v>",
+				event.Task.Namespace,
+				event.Task.Name,
+				event.Task.Resreq,
+				p.totalFreeQuotableResource,
+			)
 
 			if !p.enableTaskInQuotas(event.Task) {
 				return
@@ -541,15 +546,13 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			)
 		},
 		DeallocateFunc: func(event *framework.Event) {
-			if node := ssn.Nodes[event.Task.NodeName]; node != nil && p.enableNodeInQuotas(node) {
-				p.totalFreeQuotableResource.Add(event.Task.Resreq)
-				klog.V(3).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>, totalFreeQuotableResource: <%v>",
-					event.Task.Namespace,
-					event.Task.Name,
-					event.Task.Resreq,
-					p.totalFreeQuotableResource,
-				)
-			}
+			p.updateQuotableResources(ssn.Nodes)
+			klog.V(3).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>, totalFreeQuotableResource: <%v>",
+				event.Task.Namespace,
+				event.Task.Name,
+				event.Task.Resreq,
+				p.totalFreeQuotableResource,
+			)
 
 			if !p.enableTaskInQuotas(event.Task) {
 				return
