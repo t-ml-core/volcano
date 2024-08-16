@@ -328,7 +328,7 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 	overGuarantee := p.totalFreeGuarantee.Clone().Add(resReq).Sub(attr.GetFreeGuarantee())
 	for name := range overGuarantee.ScalarResources {
 		if _, ok := resReq.ScalarResources[name]; !ok {
-			overGuarantee.ScalarResources[name] = 0
+			delete(overGuarantee.ScalarResources, name)
 		}
 	}
 
