@@ -516,10 +516,11 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				p.totalFreeQuotableResource.SubWithoutAssert(event.Task.Resreq)
 			}
 
-			klog.V(3).Infof("Quotas AllocateFunc: task <%v/%v>, resreq <%v>, totalFreeQuotableResource: <%v>",
+			klog.V(3).Infof("Quotas AllocateFunc: task <%v/%v>, resreq <%v>, totalFreeGuarantee: <%v>, totalFreeQuotableResource: <%v>",
 				event.Task.Namespace,
 				event.Task.Name,
 				event.Task.Resreq,
+				p.totalFreeGuarantee,
 				p.totalFreeQuotableResource,
 			)
 
@@ -543,10 +544,11 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				p.totalFreeQuotableResource.Add(event.Task.Resreq)
 			}
 
-			klog.V(3).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>, totalFreeQuotableResource: <%v>",
+			klog.V(3).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>, totalFreeGuarantee: <%v>, totalFreeQuotableResource: <%v>",
 				event.Task.Namespace,
 				event.Task.Name,
 				event.Task.Resreq,
+				p.totalFreeGuarantee,
 				p.totalFreeQuotableResource,
 			)
 
