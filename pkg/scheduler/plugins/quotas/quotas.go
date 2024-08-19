@@ -336,10 +336,11 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 		return nil
 	}
 
-	return fmt.Errorf("%w; overGuarantee: %v; resReq: %v; totalFreeGuarantee: %v; p.totalFreeQuotableResource: %v",
+	return fmt.Errorf("%w; overGuarantee: %v; resReq: %v; attr.allocated: %v; totalFreeGuarantee: %v; p.totalFreeQuotableResource: %v",
 		errResourceReqCanTakeSomeoneQuota,
 		overGuarantee,
 		resReq,
+		attr.allocated,
 		p.totalFreeGuarantee,
 		p.totalFreeQuotableResource,
 	)
@@ -443,7 +444,11 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := p.queueOpts[queue.UID]
 
 		if err := p.handleQuotas(attr, candidate.Name, candidate.Resreq); err != nil {
-			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "AllocatableFn: "+err.Error())
+			reason := vcv1beta1.NotEnoughResourcesInQuota
+			if errors.Is(err, errResourceReqCanTakeSomeoneQuota) {
+				reason = vcv1beta1.NotEnoughResourcesInCluster
+			}
+			ssn.SetJobPendingReason(job, p.Name(), reason, "AllocatableFn: "+err.Error())
 			return false
 		}
 
