@@ -517,8 +517,13 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			if node := ssn.Nodes[event.Task.NodeName]; node != nil && p.enableNodeInQuotas(node) {
-				p.totalFreeQuotableResource.SubWithoutAssert(event.Task.Resreq)
+			if taskNode := ssn.Nodes[event.Task.NodeName]; taskNode != nil && p.enableNodeInQuotas(taskNode) {
+				p.totalFreeQuotableResource = api.EmptyResource()
+				for _, node := range ssn.Nodes {
+					if p.enableNodeInQuotas(node) {
+						p.totalFreeQuotableResource.Add(node.FutureIdle())
+					}
+				}
 			}
 
 			klog.V(3).Infof("Quotas AllocateFunc: task <%v/%v>, resreq <%v>, totalFreeGuarantee: <%v>, totalFreeQuotableResource: <%v>",
@@ -545,8 +550,13 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			p.totalFreeGuarantee.Add(attr.GetFreeGuarantee())
 		},
 		DeallocateFunc: func(event *framework.Event) {
-			if node := ssn.Nodes[event.Task.NodeName]; node != nil && p.enableNodeInQuotas(node) {
-				p.totalFreeQuotableResource.Add(event.Task.Resreq)
+			if taskNode := ssn.Nodes[event.Task.NodeName]; taskNode != nil && p.enableNodeInQuotas(taskNode) {
+				p.totalFreeQuotableResource = api.EmptyResource()
+				for _, node := range ssn.Nodes {
+					if p.enableNodeInQuotas(node) {
+						p.totalFreeQuotableResource.Add(node.FutureIdle())
+					}
+				}
 			}
 
 			klog.V(3).Infof("Quotas DeallocateFunc: task <%v/%v>, resreq <%v>, totalFreeGuarantee: <%v>, totalFreeQuotableResource: <%v>",
