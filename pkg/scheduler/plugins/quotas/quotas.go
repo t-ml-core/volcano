@@ -332,11 +332,12 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 	}
 
 	// totalFreeGuarantee - freeGuaranteeForCurrQueue + resReq <= totalFreeQuotableResource
-	if overGuarantee.LessEqual(p.totalFreeQuotableResource, api.Zero) {
+	ok, resources := overGuarantee.LessEqualWithResourcesName(p.totalFreeQuotableResource, api.Zero)
+	if ok {
 		return nil
 	}
 
-	return fmt.Errorf("%w; overGuarantee: %v; resReq: %v; attr.allocated: %v; totalFreeGuarantee: %v; p.totalFreeQuotableResource: %v",
+	err := fmt.Errorf("%w; overGuarantee: %v; resReq: %v; attr.allocated: %v; totalFreeGuarantee: %v; p.totalFreeQuotableResource: %v",
 		errResourceReqCanTakeSomeoneQuota,
 		overGuarantee,
 		resReq,
@@ -344,6 +345,26 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 		p.totalFreeGuarantee,
 		p.totalFreeQuotableResource,
 	)
+
+	for _, r := range resources {
+		resource := v1.ResourceName(r)
+		switch resource {
+		case v1.ResourceCPU:
+			if incrAllocated.MilliCPU >= guarantee.MilliCPU {
+				return err
+			}
+		case v1.ResourceMemory:
+			if incrAllocated.Memory >= guarantee.Memory {
+				return err
+			}
+		default:
+			if incrAllocated.ScalarResources[resource] >= guarantee.ScalarResources[resource] {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
