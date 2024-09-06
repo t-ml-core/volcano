@@ -257,11 +257,8 @@ func (ssn *Session) Overused(queue *api.QueueInfo) (bool, *api.OverusedInfo) {
 			if !found {
 				continue
 			}
-			ok, res := of(queue)
-			if ok {
-				res.Plugin = plugin.Name
-				return ok, res
-			}
+
+			return of(queue)
 		}
 	}
 
