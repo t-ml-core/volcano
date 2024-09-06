@@ -477,10 +477,14 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				reason = vcv1beta1.NotEnoughResourcesInCluster
 			}
 
-			return false, &api.OverusedInfo{Reason: string(reason), Message: "OverusedFn: " + err.Error()}
+			return true, &api.OverusedInfo{
+				Plugin:  p.Name(),
+				Reason:  string(reason),
+				Message: "OverusedFn: " + err.Error(),
+			}
 		}
 
-		return true, nil
+		return false, nil
 	})
 
 	ssn.AddQueueOrderFn(p.Name(), func(l, r any) int {
