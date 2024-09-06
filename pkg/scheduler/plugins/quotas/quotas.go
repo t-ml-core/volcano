@@ -19,11 +19,12 @@ package quotas
 import (
 	"errors"
 	"fmt"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
 	"math"
 	"math/rand"
 	"sort"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -335,7 +336,7 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 		}
 	}
 
-	// totalFreeGuarantee - freeGuaranteeForCurrQueue + resReq <= totalFreeQuotableResource + activePreemption
+	// totalFreeGuarantee - freeGuaranteeForCurrQueue + resReq <= totalFreeQuotableResource + activePreemptible
 	if overGuarantee.LessEqual(p.totalFreeQuotableResource.Clone().Add(attr.activePreemptible), api.Zero) {
 		return nil
 	}
