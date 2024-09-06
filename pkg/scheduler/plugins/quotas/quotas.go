@@ -19,12 +19,11 @@ package quotas
 import (
 	"errors"
 	"fmt"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 	"math"
 	"math/rand"
 	"sort"
-
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
 
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -61,8 +60,9 @@ type queueAttr struct {
 	name    string
 	weight  int32
 
-	allocated  *api.Resource
-	preemption *api.Resource
+	allocated         *api.Resource
+	totalPreemptible  *api.Resource
+	activePreemptible *api.Resource
 
 	limit     *api.Resource
 	guarantee *api.Resource
@@ -255,8 +255,9 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 		name:    queue.Name,
 		weight:  queue.Weight,
 
-		allocated:  api.EmptyResource(),
-		preemption: api.EmptyResource(),
+		allocated:         api.EmptyResource(),
+		totalPreemptible:  api.EmptyResource(),
+		activePreemptible: api.EmptyResource(),
 
 		guarantee: api.EmptyResource(),
 		limit:     api.EmptyResource(),
@@ -325,22 +326,26 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 	}
 
 	overGuarantee := p.totalFreeGuarantee.Clone().Add(resReq).Sub(attr.GetFreeGuarantee())
-	for name := range overGuarantee.ScalarResources {
-		if _, ok := resReq.ScalarResources[name]; !ok {
-			delete(overGuarantee.ScalarResources, name)
+
+	if !resReq.IsEmpty() {
+		for name := range overGuarantee.ScalarResources {
+			if _, ok := resReq.ScalarResources[name]; !ok {
+				delete(overGuarantee.ScalarResources, name)
+			}
 		}
 	}
 
-	// totalFreeGuarantee - freeGuaranteeForCurrQueue + resReq <= totalFreeQuotableResource
-	if overGuarantee.LessEqual(p.totalFreeQuotableResource, api.Zero) {
+	// totalFreeGuarantee - freeGuaranteeForCurrQueue + resReq <= totalFreeQuotableResource + activePreemption
+	if overGuarantee.LessEqual(p.totalFreeQuotableResource.Clone().Add(attr.activePreemptible), api.Zero) {
 		return nil
 	}
 
-	return fmt.Errorf("%w; overGuarantee: %v; resReq: %v; attr.allocated: %v; totalFreeGuarantee: %v; p.totalFreeQuotableResource: %v",
+	return fmt.Errorf("%w; overGuarantee: %v; resReq: %v; attr.allocated: %v; attr.activePreemption: %v; totalFreeGuarantee: %v; p.totalFreeQuotableResource: %v",
 		errResourceReqCanTakeSomeoneQuota,
 		overGuarantee,
 		resReq,
 		attr.allocated,
+		attr.activePreemptible,
 		p.totalFreeGuarantee,
 		p.totalFreeQuotableResource,
 	)
@@ -373,7 +378,11 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		for status, tasks := range job.TaskStatusIndex {
 			for _, task := range tasks {
 				if task.Preemptable {
-					attr.preemption.Add(task.Resreq)
+					attr.totalPreemptible.Add(task.Resreq)
+
+					if api.AllocatedStatus(status) {
+						attr.activePreemptible.Add(task.Resreq)
+					}
 				}
 
 				if !p.enableTaskInQuotas(task) {
@@ -406,6 +415,8 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		p.totalQuotableResource, ssn.TotalResource, p.totalFreeQuotableResource, p.totalGuarantee, p.totalFreeGuarantee,
 	)
 
+	// Enqueueable override does not work and is disabled in the config
+	// more details: https://github.com/volcano-sh/volcano/issues/3661
 	ssn.AddJobEnqueueableFn(p.Name(), func(obj any) int {
 		job := obj.(*api.JobInfo)
 		attr := p.queueOpts[job.Queue]
@@ -455,14 +466,30 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		return true
 	})
 
+	ssn.AddOverusedFn(p.Name(), func(obj any) (bool, *api.OverusedInfo) {
+		queue := obj.(*api.QueueInfo)
+		attr := p.queueOpts[queue.UID]
+
+		if err := p.handleQuotas(attr, "overused-"+queue.Name, api.EmptyResource()); err != nil {
+			reason := vcv1beta1.NotEnoughResourcesInQuota
+			if errors.Is(err, errResourceReqCanTakeSomeoneQuota) {
+				reason = vcv1beta1.NotEnoughResourcesInCluster
+			}
+
+			return false, &api.OverusedInfo{Reason: string(reason), Message: "OverusedFn: " + err.Error()}
+		}
+
+		return true, nil
+	})
+
 	ssn.AddQueueOrderFn(p.Name(), func(l, r any) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
 		// The more preemptible tasks there are in the queue, the later we will process it.
 		// This is necessary for the allocate-preempt loop to work more efficiently
-		if !p.queueOpts[lv.UID].preemption.Equal(p.queueOpts[rv.UID].preemption, api.Zero) {
-			if p.queueOpts[lv.UID].preemption.LessEqual(p.queueOpts[rv.UID].preemption, api.Zero) {
+		if !p.queueOpts[lv.UID].totalPreemptible.Equal(p.queueOpts[rv.UID].totalPreemptible, api.Zero) {
+			if p.queueOpts[lv.UID].totalPreemptible.LessEqual(p.queueOpts[rv.UID].totalPreemptible, api.Zero) {
 				return -1
 			}
 
@@ -534,16 +561,20 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				p.totalFreeQuotableResource,
 			)
 
-			if !p.enableTaskInQuotas(event.Task) {
-				return
-			}
-
 			job := ssn.Jobs[event.Task.Job]
 			if job == nil {
 				return
 			}
 
 			attr := p.queueOpts[job.Queue]
+
+			if event.Task.Preemptable {
+				attr.activePreemptible.Add(event.Task.Resreq)
+			}
+
+			if !p.enableTaskInQuotas(event.Task) {
+				return
+			}
 
 			p.totalFreeGuarantee.Sub(attr.GetFreeGuarantee())
 			attr.allocated.Add(event.Task.Resreq)
@@ -567,16 +598,20 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				p.totalFreeQuotableResource,
 			)
 
-			if !p.enableTaskInQuotas(event.Task) {
-				return
-			}
-
 			job := ssn.Jobs[event.Task.Job]
 			if job == nil {
 				return
 			}
 
 			attr := p.queueOpts[job.Queue]
+
+			if event.Task.Preemptable {
+				attr.activePreemptible.SubWithoutAssert(event.Task.Resreq)
+			}
+
+			if !p.enableTaskInQuotas(event.Task) {
+				return
+			}
 
 			p.totalFreeGuarantee.Sub(attr.GetFreeGuarantee())
 			attr.allocated.Sub(event.Task.Resreq)
