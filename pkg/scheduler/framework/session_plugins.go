@@ -258,7 +258,10 @@ func (ssn *Session) Overused(queue *api.QueueInfo) (bool, *api.OverusedInfo) {
 				continue
 			}
 
-			return of(queue)
+			ok, res := of(queue)
+			if ok {
+				return ok, res
+			}
 		}
 	}
 
