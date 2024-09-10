@@ -262,6 +262,10 @@ func preempt(
 
 	currentQueue := ssn.Queues[job.Queue]
 
+	if !ssn.Allocatable(currentQueue, preemptor) {
+		return false, fmt.Errorf("queue %s is not allocatable for Task <%s, %s>", currentQueue.Name, preemptor.Namespace, preemptor.Name)
+	}
+
 	for _, node := range selectedNodes {
 		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 			preemptor.Namespace, preemptor.Name, node.Name)
