@@ -89,7 +89,6 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 	ph := util.NewPredicateHelper()
 	// Preemption between Jobs within Queue.
 	for _, queue := range queues {
-
 		isOverused, info := ssn.Overused(queue)
 		if isOverused {
 			klog.V(3).Infof("Queue <%s> is overused, ignore it", queue.Name)
