@@ -137,7 +137,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		queue := queues.Pop().(*api.QueueInfo)
 		isOverused, info := ssn.Overused(queue)
 		if isOverused {
-			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
+			klog.V(3).Infof("Queue <%s> is overused, ignore it", queue.Name)
 			jobs := jobsMap[queue.UID]
 
 			for !jobs.Empty() {
