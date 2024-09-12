@@ -45,8 +45,9 @@ type quotasPlugin struct {
 	totalQuotableResource     *api.Resource
 	totalFreeQuotableResource *api.Resource
 
-	totalGuarantee     *api.Resource
-	totalFreeGuarantee *api.Resource
+	totalGuaranteeResource         *api.Resource
+	totalFreeGuaranteeResource     *api.Resource
+	totalActivePreemptibleResource *api.Resource
 
 	queueOpts map[api.QueueID]*queueAttr
 
@@ -61,9 +62,8 @@ type queueAttr struct {
 	name    string
 	weight  int32
 
-	allocated         *api.Resource
-	totalPreemptible  *api.Resource
-	activePreemptible *api.Resource
+	allocated   *api.Resource
+	preemptible *api.Resource
 
 	limit     *api.Resource
 	guarantee *api.Resource
@@ -101,8 +101,9 @@ func New(arguments framework.Arguments) framework.Plugin {
 		totalQuotableResource:     api.EmptyResource(),
 		totalFreeQuotableResource: api.EmptyResource(),
 
-		totalGuarantee:     api.EmptyResource(),
-		totalFreeGuarantee: api.EmptyResource(),
+		totalGuaranteeResource:         api.EmptyResource(),
+		totalFreeGuaranteeResource:     api.EmptyResource(),
+		totalActivePreemptibleResource: api.EmptyResource(),
 
 		queueOpts: map[api.QueueID]*queueAttr{},
 
@@ -256,9 +257,8 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 		name:    queue.Name,
 		weight:  queue.Weight,
 
-		allocated:         api.EmptyResource(),
-		totalPreemptible:  api.EmptyResource(),
-		activePreemptible: api.EmptyResource(),
+		allocated:   api.EmptyResource(),
+		preemptible: api.EmptyResource(),
 
 		guarantee: api.EmptyResource(),
 		limit:     api.EmptyResource(),
@@ -282,7 +282,7 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 		attr.limit = queueLimit.MinDimensionResource(attr.limit, api.Infinity)
 	}
 
-	realLimit := p.totalQuotableResource.Clone().Add(attr.guarantee).SubWithoutAssert(p.totalGuarantee)
+	realLimit := p.totalQuotableResource.Clone().Add(attr.guarantee).SubWithoutAssert(p.totalGuaranteeResource)
 	attr.limit = realLimit.MinDimensionResource(attr.limit, api.Infinity)
 
 	return attr
@@ -295,16 +295,16 @@ var (
 
 func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api.Resource) error {
 	guarantee := attr.guarantee.Clone()
-	if p.totalGuarantee.MilliCPU == 0 {
+	if p.totalGuaranteeResource.MilliCPU == 0 {
 		guarantee.MilliCPU = attr.limit.MilliCPU
 	}
 
-	if p.totalGuarantee.Memory == 0 {
+	if p.totalGuaranteeResource.Memory == 0 {
 		guarantee.Memory = attr.limit.Memory
 	}
 
 	for name := range attr.limit.ScalarResources {
-		if _, ok := p.totalGuarantee.ScalarResources[name]; !ok {
+		if _, ok := p.totalGuaranteeResource.ScalarResources[name]; !ok {
 			if guarantee.ScalarResources == nil {
 				guarantee.ScalarResources = make(map[v1.ResourceName]float64)
 			}
@@ -326,7 +326,7 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 		return nil
 	}
 
-	overGuarantee := p.totalFreeGuarantee.Clone().Add(resReq).Sub(attr.GetFreeGuarantee())
+	overGuarantee := p.totalFreeGuaranteeResource.Clone().Add(resReq).Sub(attr.GetFreeGuarantee())
 
 	if !resReq.IsEmpty() {
 		for name := range overGuarantee.ScalarResources {
@@ -336,18 +336,18 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 		}
 	}
 
-	// totalFreeGuarantee - freeGuaranteeForCurrQueue + resReq <= totalFreeQuotableResource + activePreemptible
-	if overGuarantee.LessEqual(p.totalFreeQuotableResource.Clone().Add(attr.activePreemptible), api.Zero) {
+	// totalFreeGuarantee - freeGuaranteeForCurrQueue + resReq <= totalFreeQuotableResource + totalActivePreemptible
+	if overGuarantee.LessEqual(p.totalFreeQuotableResource.Clone().Add(p.totalActivePreemptibleResource), api.Zero) {
 		return nil
 	}
 
-	return fmt.Errorf("%w; overGuarantee: %v; resReq: %v; attr.allocated: %v; attr.activePreemption: %v; totalFreeGuarantee: %v; p.totalFreeQuotableResource: %v",
+	return fmt.Errorf("%w; overGuarantee: %v; resReq: %v; attr.allocated: %v; totalActivePreemptible: %v; totalFreeGuarantee: %v; totalFreeQuotableResource: %v",
 		errResourceReqCanTakeSomeoneQuota,
 		overGuarantee,
 		resReq,
 		attr.allocated,
-		attr.activePreemptible,
-		p.totalFreeGuarantee,
+		p.totalActivePreemptibleResource,
+		p.totalFreeGuaranteeResource,
 		p.totalFreeQuotableResource,
 	)
 }
@@ -365,7 +365,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			continue
 		}
 		guarantee := api.NewResource(queue.Queue.Spec.Guarantee.Resource)
-		p.totalGuarantee.Add(guarantee)
+		p.totalGuaranteeResource.Add(guarantee)
 	}
 
 	for _, job := range ssn.Jobs {
@@ -379,10 +379,10 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		for status, tasks := range job.TaskStatusIndex {
 			for _, task := range tasks {
 				if task.Preemptable {
-					attr.totalPreemptible.Add(task.Resreq)
+					attr.preemptible.Add(task.Resreq)
 
 					if api.AllocatedStatus(status) {
-						attr.activePreemptible.Add(task.Resreq)
+						p.totalActivePreemptibleResource.Add(task.Resreq)
 					}
 				}
 
@@ -407,13 +407,13 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		freeGuarantee := attr.GetFreeGuarantee()
-		p.totalFreeGuarantee.Add(freeGuarantee)
+		p.totalFreeGuaranteeResource.Add(freeGuarantee)
 		klog.V(4).Infof("free guarantee %v for queue %s", freeGuarantee, queue.Name)
 	}
 
 	klog.V(3).Infof("The total resource in quotas plugin <%v>, in cluster <%v>,"+
 		"free <%v>, total guarantee resource is <%v>, total free guarantee resource is <%v>",
-		p.totalQuotableResource, ssn.TotalResource, p.totalFreeQuotableResource, p.totalGuarantee, p.totalFreeGuarantee,
+		p.totalQuotableResource, ssn.TotalResource, p.totalFreeQuotableResource, p.totalGuaranteeResource, p.totalFreeGuaranteeResource,
 	)
 
 	// Enqueueable override does not work and is disabled in the config
@@ -493,8 +493,8 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// The more preemptible tasks there are in the queue, the later we will process it.
 		// This is necessary for the allocate-preempt loop to work more efficiently
-		if !p.queueOpts[lv.UID].totalPreemptible.Equal(p.queueOpts[rv.UID].totalPreemptible, api.Zero) {
-			if p.queueOpts[lv.UID].totalPreemptible.LessEqual(p.queueOpts[rv.UID].totalPreemptible, api.Zero) {
+		if !p.queueOpts[lv.UID].preemptible.Equal(p.queueOpts[rv.UID].preemptible, api.Zero) {
+			if p.queueOpts[lv.UID].preemptible.LessEqual(p.queueOpts[rv.UID].preemptible, api.Zero) {
 				return -1
 			}
 
@@ -562,7 +562,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace,
 				event.Task.Name,
 				event.Task.Resreq,
-				p.totalFreeGuarantee,
+				p.totalFreeGuaranteeResource,
 				p.totalFreeQuotableResource,
 			)
 
@@ -574,16 +574,16 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr := p.queueOpts[job.Queue]
 
 			if event.Task.Preemptable {
-				attr.activePreemptible.Add(event.Task.Resreq)
+				p.totalActivePreemptibleResource.Add(event.Task.Resreq)
 			}
 
 			if !p.enableTaskInQuotas(event.Task) {
 				return
 			}
 
-			p.totalFreeGuarantee.Sub(attr.GetFreeGuarantee())
+			p.totalFreeGuaranteeResource.Sub(attr.GetFreeGuarantee())
 			attr.allocated.Add(event.Task.Resreq)
-			p.totalFreeGuarantee.Add(attr.GetFreeGuarantee())
+			p.totalFreeGuaranteeResource.Add(attr.GetFreeGuarantee())
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			if taskNode := ssn.Nodes[event.Task.NodeName]; taskNode != nil && p.enableNodeInQuotas(taskNode) {
@@ -599,7 +599,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace,
 				event.Task.Name,
 				event.Task.Resreq,
-				p.totalFreeGuarantee,
+				p.totalFreeGuaranteeResource,
 				p.totalFreeQuotableResource,
 			)
 
@@ -611,16 +611,16 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr := p.queueOpts[job.Queue]
 
 			if event.Task.Preemptable {
-				attr.activePreemptible.SubWithoutAssert(event.Task.Resreq)
+				p.totalActivePreemptibleResource.SubWithoutAssert(event.Task.Resreq)
 			}
 
 			if !p.enableTaskInQuotas(event.Task) {
 				return
 			}
 
-			p.totalFreeGuarantee.Sub(attr.GetFreeGuarantee())
+			p.totalFreeGuaranteeResource.Sub(attr.GetFreeGuarantee())
 			attr.allocated.Sub(event.Task.Resreq)
-			p.totalFreeGuarantee.Add(attr.GetFreeGuarantee())
+			p.totalFreeGuaranteeResource.Add(attr.GetFreeGuarantee())
 		},
 	})
 }
