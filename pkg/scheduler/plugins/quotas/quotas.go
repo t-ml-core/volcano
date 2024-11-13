@@ -291,6 +291,7 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 var (
 	errResourceReqIsGreaterThanLimit  = errors.New("job's resource request is greater than queue's limit")
 	errResourceReqCanTakeSomeoneQuota = errors.New("job's resource request can take someone else's quota")
+	errResourceReqInsufficientQuota   = errors.New("job's resource request ")
 )
 
 func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api.Resource) error {
@@ -318,7 +319,9 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 	klog.V(4).Infof("job name <%s>; minResources <%v>; attr.limit <%v>; attr.guarantee <%v>; incrAllocated <%v>",
 		jobName, resReq, attr.limit, guarantee, incrAllocated)
 
-	if !incrAllocated.LessEqual(attr.limit, api.Zero) {
+	if !resReq.LessEqual(attr.limit, api.Zero) {
+		return errResourceReqInsufficientQuota
+	} else if !incrAllocated.LessEqual(attr.limit, api.Zero) {
 		return errResourceReqIsGreaterThanLimit
 	}
 
@@ -437,6 +440,8 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			if errors.Is(err, errResourceReqIsGreaterThanLimit) {
 				ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "EnqueueableFn: "+err.Error())
 				return util.Reject
+			} else if errors.Is(err, errResourceReqInsufficientQuota) {
+				ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.InsufficientQuota, "EnqueueableFn: "+err.Error())
 			}
 
 			// we can free up resources through preemption
