@@ -291,10 +291,14 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 var (
 	errResourceReqIsGreaterThanLimit  = errors.New("job's resource request is greater than queue's limit")
 	errResourceReqCanTakeSomeoneQuota = errors.New("job's resource request can take someone else's quota")
-	errResourceReqInsufficientQuota   = errors.New("job's resource request ")
+	errResourceReqInsufficientQuota   = errors.New("job's resource request is greater than whole quota")
 )
 
 func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api.Resource) error {
+	if !resReq.LessEqual(attr.limit, api.Zero) {
+		return errResourceReqInsufficientQuota
+	}
+
 	guarantee := attr.guarantee.Clone()
 	if p.totalGuaranteeResource.MilliCPU == 0 {
 		guarantee.MilliCPU = attr.limit.MilliCPU
@@ -319,9 +323,7 @@ func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api
 	klog.V(4).Infof("job name <%s>; minResources <%v>; attr.limit <%v>; attr.guarantee <%v>; incrAllocated <%v>",
 		jobName, resReq, attr.limit, guarantee, incrAllocated)
 
-	if !resReq.LessEqual(attr.limit, api.Zero) {
-		return errResourceReqInsufficientQuota
-	} else if !incrAllocated.LessEqual(attr.limit, api.Zero) {
+	if !incrAllocated.LessEqual(attr.limit, api.Zero) {
 		return errResourceReqIsGreaterThanLimit
 	}
 
