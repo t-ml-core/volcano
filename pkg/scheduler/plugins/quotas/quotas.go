@@ -444,6 +444,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 				return util.Reject
 			} else if errors.Is(err, errResourceReqInsufficientQuota) {
 				ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.InsufficientQuota, "EnqueueableFn: "+err.Error())
+				return util.Reject
 			}
 
 			// we can free up resources through preemption
