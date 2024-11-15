@@ -427,29 +427,9 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		job := obj.(*api.JobInfo)
 		attr := p.queueOpts[job.Queue]
 
-		if job.PodGroup.Spec.MinResources == nil {
-			klog.V(4).Infof("Job %s MinResources is null.", job.Name)
-			return util.Permit
-		}
-
-		for _, task := range job.Tasks {
-			if !p.enableTaskInQuotas(task) {
-				return util.Permit
-			}
-		}
-
-		if err := p.handleQuotas(attr, job.Name, job.GetMinResources()); err != nil {
-			if errors.Is(err, errResourceReqIsGreaterThanLimit) {
-				ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "EnqueueableFn: "+err.Error())
-				return util.Reject
-			} else if errors.Is(err, errResourceReqInsufficientQuota) {
-				ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.InsufficientQuota, "EnqueueableFn: "+err.Error())
-				return util.Reject
-			}
-
-			// we can free up resources through preemption
-			klog.V(3).Infof("enqueueable warning with job `%s`:  %w.", job.Name, err)
-			return util.Abstain
+		if !job.GetMinResources().LessEqual(attr.limit, api.Zero) {
+			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.InsufficientQuota, "AllocatableFn: "+err.Error())
+			return util.Reject
 		}
 
 		return util.Permit
