@@ -428,7 +428,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := p.queueOpts[job.Queue]
 
 		if !job.GetMinResources().LessEqual(attr.limit, api.Zero) {
-			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.InsufficientQuota, "AllocatableFn: "+err.Error())
+			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.InsufficientQuota, "EnqueueableFn: Insufficient quota")
 			return util.Reject
 		}
 
