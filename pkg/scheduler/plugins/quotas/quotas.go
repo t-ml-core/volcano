@@ -467,6 +467,8 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			reason := vcv1beta1.NotEnoughResourcesInQuota
 			if errors.Is(err, errResourceReqCanTakeSomeoneQuota) {
 				reason = vcv1beta1.NotEnoughResourcesInCluster
+			} else if errors.Is(err, errResourceReqInsufficientQuota) {
+				reason = vcv1beta1.InsufficientQuota
 			}
 			ssn.SetJobPendingReason(job, p.Name(), reason, "AllocatableFn: "+err.Error())
 			return false
