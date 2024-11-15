@@ -291,9 +291,14 @@ func (p *quotasPlugin) createQueueAttr(queue *api.QueueInfo) *queueAttr {
 var (
 	errResourceReqIsGreaterThanLimit  = errors.New("job's resource request is greater than queue's limit")
 	errResourceReqCanTakeSomeoneQuota = errors.New("job's resource request can take someone else's quota")
+	errResourceReqInsufficientQuota   = errors.New("job's resource request is greater than whole quota")
 )
 
 func (p *quotasPlugin) handleQuotas(attr *queueAttr, jobName string, resReq *api.Resource) error {
+	if !resReq.LessEqual(attr.limit, api.Zero) {
+		return errResourceReqInsufficientQuota
+	}
+
 	guarantee := attr.guarantee.Clone()
 	if p.totalGuaranteeResource.MilliCPU == 0 {
 		guarantee.MilliCPU = attr.limit.MilliCPU
@@ -422,26 +427,9 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		job := obj.(*api.JobInfo)
 		attr := p.queueOpts[job.Queue]
 
-		if job.PodGroup.Spec.MinResources == nil {
-			klog.V(4).Infof("Job %s MinResources is null.", job.Name)
-			return util.Permit
-		}
-
-		for _, task := range job.Tasks {
-			if !p.enableTaskInQuotas(task) {
-				return util.Permit
-			}
-		}
-
-		if err := p.handleQuotas(attr, job.Name, job.GetMinResources()); err != nil {
-			if errors.Is(err, errResourceReqIsGreaterThanLimit) {
-				ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.NotEnoughResourcesInQuota, "EnqueueableFn: "+err.Error())
-				return util.Reject
-			}
-
-			// we can free up resources through preemption
-			klog.V(3).Infof("enqueueable warning with job `%s`:  %w.", job.Name, err)
-			return util.Abstain
+		if !job.GetMinResources().LessEqual(attr.limit, api.Zero) {
+			ssn.SetJobPendingReason(job, p.Name(), vcv1beta1.InsufficientQuota, "EnqueueableFn: Insufficient quota")
+			return util.Reject
 		}
 
 		return util.Permit
@@ -459,6 +447,8 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 			reason := vcv1beta1.NotEnoughResourcesInQuota
 			if errors.Is(err, errResourceReqCanTakeSomeoneQuota) {
 				reason = vcv1beta1.NotEnoughResourcesInCluster
+			} else if errors.Is(err, errResourceReqInsufficientQuota) {
+				reason = vcv1beta1.InsufficientQuota
 			}
 			ssn.SetJobPendingReason(job, p.Name(), reason, "AllocatableFn: "+err.Error())
 			return false
