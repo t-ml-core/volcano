@@ -40,8 +40,8 @@ const (
 
 	allowedPercentageOfDeviationFromBestNodeScoreOpt = "allowed.percentage.of.deviation.from.best.node.score"
 
-	// ProjectInOthersGuarantee is the reason for a job being pending because it can take resources from another queue's guarantee
-	ProjectInOthersGuarantee vcv1beta1.PendingReason = "ProjectInOthersGuarantee"
+	// QueueMayTakeOthersGuarantee is the reason for a job being pending because it can take resources from another queue's guarantee
+	QueueMayTakeOthersGuarantee vcv1beta1.PendingReason = "QueueMayTakeOthersGuarantee"
 )
 
 type quotasPlugin struct {
@@ -449,7 +449,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		if err := p.handleQuotas(attr, candidate.Name, candidate.Resreq); err != nil {
 			reason := vcv1beta1.NotEnoughResourcesInQuota
 			if errors.Is(err, errResourceReqCanTakeSomeoneQuota) {
-				reason = ProjectInOthersGuarantee
+				reason = QueueMayTakeOthersGuarantee
 			} else if errors.Is(err, errResourceReqInsufficientQuota) {
 				reason = vcv1beta1.InsufficientQuota
 			}
@@ -467,7 +467,7 @@ func (p *quotasPlugin) OnSessionOpen(ssn *framework.Session) {
 		if err := p.handleQuotas(attr, "overused-"+queue.Name, api.EmptyResource()); err != nil {
 			reason := vcv1beta1.NotEnoughResourcesInQuota
 			if errors.Is(err, errResourceReqCanTakeSomeoneQuota) {
-				reason = ProjectInOthersGuarantee
+				reason = QueueMayTakeOthersGuarantee
 			}
 
 			return true, &api.OverusedInfo{
